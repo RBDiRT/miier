@@ -1,164 +1,128 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Tv, ExternalLink, Calendar, Film, BookOpen, Loader2, RefreshCw } from 'lucide-react';
+import { Search, Tv, ExternalLink, Calendar, Film, BookOpen, RefreshCw, Loader2 } from 'lucide-react';
 
-// ひらがな変換用関数（表記ゆれ吸収）
+// カタカナをひらがなに変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
   return str.replace(/[\u30a1-\u30f6]/g, (match) =>
     String.fromCharCode(match.charCodeAt(0) - 0x60)
   );
 };
 
-// アニメの型定義
-interface AnimeItem {
-  id: string;
+// 現在の年月から「今期のシーズンコード（例: 2026-autumn）」を自動計算する関数
+const getCurrentSeasonCode = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  let season = 'winter';
+  if (month >= 4 && month <= 6) season = 'spring';
+  else if (month >= 7 && month <= 9) season = 'summer';
+  else if (month >= 10 && month <= 12) season = 'autumn';
+
+  return `${year}-${season}`;
+};
+
+// 今期の表示用日本語名
+const getCurrentSeasonName = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  let seasonJp = '冬';
+  if (month >= 4 && month <= 6) seasonJp = '春';
+  else if (month >= 7 && month <= 9) seasonJp = '夏';
+  else if (month >= 10 && month <= 12) seasonJp = '秋';
+
+  return `${year}年 ${seasonJp}アニメ`;
+};
+
+interface AnimeWork {
+  id: number;
   title: string;
-  hiraganaTitle: string;
-  totalEpisodes: number;
-  currentEpisode: number;
-  finalEpisodeDate: string;
-  broadcastSchedule: string;
-  fastestStream: string;
-  dayOfWeek: string;
-  tags: string[];
-  vodUrl: string;
-  rakutenUrl: string;
+  title_kana: string;
+  media_text: string;
+  episodes_count: number;
+  official_site_url: string;
+  twitter_username: string;
+  season_name_text: string;
 }
 
-const DAYS = ['すべて', '月', '火', '水', '木', '金', '土', '日'];
+const DAYS = ['すべて', 'TV・WEB', '映画・OVA'];
 
 export default function Home() {
-  const [selectedDay, setSelectedDay] = useState('すべて');
+  const [selectedCategory, setSelectedCategory] = useState('すべて');
   const [searchQuery, setSearchQuery] = useState('');
-  const [animeList, setAnimeList] = useState<AnimeItem[]>([]);
+  const [animeList, setAnimeList] = useState<AnimeWork[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  // 🔄 自動データ取得処理（Annict API / アニメAPI連携）
-  const fetchCurrentSeasonAnime = async () => {
+  // 🔄 Annict APIから今期アニメを全件自動取得する関数
+  const fetchAnnictAnime = async () => {
     setLoading(true);
+    setErrorMsg('');
+
+    const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
+    const seasonCode = getCurrentSeasonCode();
+
+    if (!token) {
+      setErrorMsg('アクセストークンが設定されていません。.env.localまたはVercelの環境変数を確認してください。');
+      setLoading(false);
+      return;
+    }
+
     try {
-      // 💡 今期（2026年秋など）のアニメデータを取得するAPIリクエスト
-      // ※ここでは即座に動作確認できるよう、自動生成ロジック＆バックアップAPI構造を組んでいます
-      const res = await fetch('https://api.annict.com/v1/works?filter_season=2026-autum&sort_watchers_count=desc', {
-        headers: {
-          // トークンなしでもフォールバックデータで即座に動作する安全設計
+      // Annict APIから今期（放送者数順）のアニメを最大50件自動取得
+      const response = await fetch(
+        `https://api.annict.com/v1/works?filter_season=${seasonCode}&sort_watchers_count=desc&per_page=50`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        // APIから返ってきたデータをMiier形式に整形
-        const formatted = data.works.map((work: any, index: number) => ({
-          id: String(work.id || index),
-          title: work.title,
-          hiraganaTitle: work.title_kana || work.title,
-          totalEpisodes: work.episodes_count || 12,
-          currentEpisode: Math.floor(Math.random() * 4) + 1, // 放送中話数
-          finalEpisodeDate: '2026-12-25',
-          broadcastSchedule: work.media_text || '毎週放送中',
-          fastestStream: 'ABEMA / DMM TV / U-NEXT ほか',
-          dayOfWeek: ['月', '火', '水', '木', '金', '土', '日'][index % 7],
-          tags: [work.media_text || 'TVアニメ', '今期話題作'],
-          vodUrl: `https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID&extra=${encodeURIComponent(work.title)}`,
-          rakutenUrl: `https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID?pc=${encodeURIComponent(work.title)}`,
-        }));
-        setAnimeList(formatted);
-      } else {
-        throw new Error('API取得代替ルートへ');
+      );
+
+      if (!response.ok) {
+        throw new Error(`APIエラー: ${response.status}`);
       }
-    } catch (error) {
-      // API制限時やオフライン時も止まらないリアルデータフォールバック
-      setAnimeList([
-        {
-          id: '1',
-          title: '薬屋のひとりごと 第3期',
-          hiraganaTitle: 'くすりやのひとりごと',
-          totalEpisodes: 12,
-          currentEpisode: 3,
-          finalEpisodeDate: '2026-12-18',
-          broadcastSchedule: '毎週金曜 23:00〜 (日本テレビ系)',
-          fastestStream: 'ABEMA / U-NEXT 毎週金曜 24:00〜',
-          dayOfWeek: '金',
-          tags: ['ミステリー', '後宮', 'ドラマ'],
-          vodUrl: 'https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID',
-          rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID',
-        },
-        {
-          id: '2',
-          title: 'アオのハコ Season2',
-          hiraganaTitle: 'あおのはこ',
-          totalEpisodes: 12,
-          currentEpisode: 3,
-          finalEpisodeDate: '2026-12-20',
-          broadcastSchedule: '毎週日曜 16:30〜 (TBS系)',
-          fastestStream: 'Netflix / Prime Video 毎週日曜 17:00〜',
-          dayOfWeek: '日',
-          tags: ['青春', '部活', 'ラブコメ'],
-          vodUrl: 'https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID',
-          rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID',
-        },
-        {
-          id: '3',
-          title: '「氷の城壁」第2期',
-          hiraganaTitle: 'こおりのじょうへき',
-          totalEpisodes: 12,
-          currentEpisode: 3,
-          finalEpisodeDate: '2026-12-17',
-          broadcastSchedule: '毎週木曜 23:56〜 (TBS系列)',
-          fastestStream: 'dアニメストア / DMM TV 毎週木曜 24:30〜',
-          dayOfWeek: '木',
-          tags: ['学園', '青春', 'ドラマ'],
-          vodUrl: 'https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID',
-          rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID',
-        },
-        {
-          id: '4',
-          title: '東京リベンジャーズ 三天戦争編',
-          hiraganaTitle: 'とうきょうりべんじゃーず',
-          totalEpisodes: 13,
-          currentEpisode: 3,
-          finalEpisodeDate: '2026-12-25',
-          broadcastSchedule: '毎週金曜 25:23〜 (テレビ東京)',
-          fastestStream: 'Disney+ / Prime Video 毎週金曜 26:00〜',
-          dayOfWeek: '金',
-          tags: ['ヤンキー', 'バトル', 'アクション'],
-          vodUrl: 'https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID',
-          rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID',
-        },
-      ]);
+
+      const data = await response.json();
+      setAnimeList(data.works || []);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg('アニメデータの自動取得に失敗しました。トークン有効期限や通信環境を確認してください。');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCurrentSeasonAnime();
+    fetchAnnictAnime();
   }, []);
 
-  // 🔍 ひらがな・カタカナ両対応の検索フィルター
+  // 🔍 検索ロジック
   const filteredAnime = animeList.filter((anime) => {
     const rawQuery = searchQuery.trim().toLowerCase();
 
-    if (!rawQuery) {
-      return selectedDay === 'すべて' || anime.dayOfWeek === selectedDay;
+    // カテゴリ絞り込み
+    if (selectedCategory !== 'すべて') {
+      if (selectedCategory === 'TV・WEB' && !['TV', 'WEB'].includes(anime.media_text)) return false;
+      if (selectedCategory === '映画・OVA' && !['MOVIE', 'OVA'].includes(anime.media_text)) return false;
     }
+
+    if (!rawQuery) return true;
 
     const normQuery = toHiragana(rawQuery);
     const normTitle = toHiragana(anime.title.toLowerCase());
-    const normHiragana = toHiragana((anime.hiraganaTitle || '').toLowerCase());
-    const normTags = anime.tags.map((tag) => toHiragana(tag.toLowerCase()));
+    const normKana = toHiragana((anime.title_kana || '').toLowerCase());
 
-    return (
-      normTitle.includes(normQuery) ||
-      normHiragana.includes(normQuery) ||
-      normTags.some((tag) => tag.includes(normQuery))
-    );
+    return normTitle.includes(normQuery) || normKana.includes(normQuery);
   });
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
-      {/* 1. ヘッダー (明るいホワイトベース) */}
+      {/* 1. ヘッダー */}
       <header className="border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-50 px-4 py-3 shadow-sm">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -168,46 +132,48 @@ export default function Home() {
             </span>
           </div>
 
-          <button
-            onClick={fetchCurrentSeasonAnime}
-            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-amber-600 bg-slate-100 hover:bg-amber-50 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>最新データ取得</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">
+              {getCurrentSeasonName()} 自動更新中
+            </span>
+            <button
+              onClick={fetchAnnictAnime}
+              className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-amber-600 bg-slate-100 hover:bg-amber-50 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">再読み込み</span>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* 2. メインエリア */}
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        {/* 検索＆曜日切り替え */}
+        {/* 検索・フィルター */}
         <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
-          {/* 曜日タブ */}
+          {/* カテゴリ切り替え */}
           <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto">
-            {DAYS.map((day) => (
+            {DAYS.map((cat) => (
               <button
-                key={day}
-                onClick={() => {
-                  setSelectedDay(day);
-                  setSearchQuery('');
-                }}
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
                 className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
-                  selectedDay === day && searchQuery === ''
+                  selectedCategory === cat
                     ? 'bg-amber-500 text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                {day}
+                {cat}
               </button>
             ))}
           </div>
 
           {/* 検索バー */}
-          <div className="relative w-full sm:w-72">
+          <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="作品名・ひらがな・タグで検索..."
+              placeholder="作品名・ひらがな検索..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-50 text-slate-800 text-xs pl-9 pr-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
@@ -215,104 +181,115 @@ export default function Home() {
           </div>
         </div>
 
+        {/* エラーメッセージ表示 */}
+        {errorMsg && (
+          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs">
+            {errorMsg}
+          </div>
+        )}
+
         {/* ロード中表示 */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-            <p className="text-xs">今期のアニメデータを自動更新中...</p>
+            <p className="text-xs">Annict APIから今期アニメ全件を自動読み込み中...</p>
           </div>
         ) : (
-          /* アニメカード一覧 (明るいカードデザイン) */
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredAnime.map((anime) => {
-              const isNearFinal = anime.totalEpisodes - anime.currentEpisode <= 2;
-              return (
-                <div
-                  key={anime.id}
-                  className="bg-white border border-slate-200 hover:border-amber-400/60 rounded-2xl p-5 space-y-4 shadow-sm hover:shadow-md transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h2 className="text-base font-bold text-slate-900">{anime.title}</h2>
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        {anime.tags.map((tag) => (
-                          <button
-                            key={tag}
-                            onClick={() => setSearchQuery(tag)}
-                            className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-amber-50 hover:text-amber-600 text-slate-600 font-medium transition-colors"
-                          >
-                            #{tag}
-                          </button>
-                        ))}
+          /* 動的アニメカードグリッド */
+          <div>
+            <div className="mb-3 text-xs text-slate-500 font-medium">
+              今期アニメ {filteredAnime.length} 件取得完了
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredAnime.map((anime) => {
+                // 各種アフィリエイト・検索リンクの動的生成
+                const searchDmmUrl = `https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID&extra=${encodeURIComponent(
+                  anime.title
+                )}`;
+                const searchRakutenUrl = `https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID?pc=${encodeURIComponent(
+                  `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(anime.title)}/`
+                )}`;
+
+                return (
+                  <div
+                    key={anime.id}
+                    className="bg-white border border-slate-200 hover:border-amber-400/80 rounded-2xl p-5 space-y-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold uppercase">
+                            {anime.media_text || 'アニメ'}
+                          </span>
+                          <h2 className="text-base font-bold text-slate-900 leading-snug mt-1">
+                            {anime.title}
+                          </h2>
+                        </div>
+
+                        {anime.episodes_count > 0 && (
+                          <span className="text-xs font-extrabold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 shrink-0">
+                            全{anime.episodes_count}話
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 公式リンク・各種配信情報ボタン */}
+                      <div className="space-y-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-700">
+                          <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span className="font-semibold text-slate-500">配信・検索:</span>
+                          <span className="text-slate-700">DMM TV / Amazon / U-NEXT ほか</span>
+                        </div>
+                        {anime.official_site_url && (
+                          <div className="flex items-center gap-2 text-slate-700">
+                            <Tv className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                            <span className="font-semibold text-slate-500">公式サイト:</span>
+                            <a
+                              href={anime.official_site_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-amber-600 hover:underline truncate"
+                            >
+                              {anime.official_site_url}
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <span className="text-xs font-extrabold px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
-                        第{anime.currentEpisode}話 / 全{anime.totalEpisodes}話
-                      </span>
-                      {isNearFinal && (
-                        <div className="text-[10px] text-rose-500 font-bold mt-1 animate-pulse">
-                          ⚠️ 最終回目前！
-                        </div>
-                      )}
+                    {/* ボタンリンク */}
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <a
+                        href={searchDmmUrl}
+                        target="_blank"
+                        rel="nofollow noopener"
+                        className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2.5 px-3 rounded-xl shadow-sm transition-all active:scale-95"
+                      >
+                        <span>最速配信を検索</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+
+                      <a
+                        href={searchRakutenUrl}
+                        target="_blank"
+                        rel="nofollow noopener"
+                        className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2.5 px-3 rounded-xl border border-slate-200 transition-all active:scale-95"
+                      >
+                        <BookOpen className="w-3 h-3 text-slate-500" />
+                        <span>原作・グッズ</span>
+                      </a>
                     </div>
                   </div>
-
-                  <div className="space-y-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <div className="flex items-center gap-2 text-slate-700">
-                      <Tv className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span className="font-semibold text-slate-500">地上波:</span>
-                      <span>{anime.broadcastSchedule}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-700">
-                      <Film className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                      <span className="font-semibold text-slate-500">最速配信:</span>
-                      <span>{anime.fastestStream}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-700">
-                      <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span className="font-semibold text-slate-500">最終話予定:</span>
-                      <span className="font-bold text-emerald-600">{anime.finalEpisodeDate} 頃</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <a
-                      href={anime.vodUrl}
-                      target="_blank"
-                      rel="nofollow noopener"
-                      className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2 px-3 rounded-xl shadow-sm transition-all active:scale-95"
-                    >
-                      <span>最速配信で観る</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-
-                    <a
-                      href={anime.rakutenUrl}
-                      target="_blank"
-                      rel="nofollow noopener"
-                      className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2 px-3 rounded-xl border border-slate-200 transition-all active:scale-95"
-                    >
-                      <BookOpen className="w-3 h-3 text-slate-500" />
-                      <span>原作・グッズ</span>
-                    </a>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {!loading && filteredAnime.length === 0 && (
-          <div className="text-center py-12 text-slate-400 text-sm">
-            <p>該当するアニメが見つかりませんでした 🦡</p>
+                );
+              })}
+            </div>
           </div>
         )}
       </main>
 
       <footer className="border-t border-slate-200 mt-16 py-6 text-center text-xs text-slate-400">
-        <p>© 2026 Miier (ミーア)</p>
+        <p>© 2026 Miier (ミーア) - Powered by Annict API</p>
       </footer>
     </div>
   );
