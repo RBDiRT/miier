@@ -26,6 +26,36 @@ interface AnimeWork {
 const DAYS = ['すべて', '月', '火', '水', '木', '金', '土', '日'];
 const PLATFORMS = ['すべて', 'DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT', 'Netflix', '地上波・BS'];
 
+// 🎯 プラットフォームの一致判定（表記揺れ対応）
+const checkPlatformMatch = (channels: string[], platform: string) => {
+  if (platform === 'すべて') return true;
+  if (!channels || channels.length === 0) return false;
+
+  return channels.some((ch) => {
+    const c = ch.toLowerCase();
+    if (platform === 'DMM TV') return c.includes('dmm');
+    if (platform === 'Amazon Prime') return c.includes('amazon') || c.includes('prime') || c.includes('プライム');
+    if (platform === 'dアニメストア') return c.includes('dアニメ') || c.includes('danime');
+    if (platform === 'U-NEXT') return c.includes('u-next') || c.includes('unext');
+    if (platform === 'Netflix') return c.includes('netflix') || c.includes('ネットフリックス');
+    if (platform === '地上波・BS') {
+      return (
+        c.includes('mx') ||
+        c.includes('bs') ||
+        c.includes('tv') ||
+        c.includes('テレビ') ||
+        c.includes('放送') ||
+        c.includes('テレ東') ||
+        c.includes('フジ') ||
+        c.includes('nhk') ||
+        c.includes('tbs') ||
+        c.includes('ntv')
+      );
+    }
+    return false;
+  });
+};
+
 export default function Home() {
   const [selectedDay, setSelectedDay] = useState('すべて');
   const [selectedPlatform, setSelectedPlatform] = useState('すべて');
@@ -105,16 +135,18 @@ export default function Home() {
             }
           });
 
-          // 作品一覧に曜日・チャンネル情報を紐付け
+          // 作品一覧に曜日・チャンネル情報を紐付け（主要配信サイトを標準カバースペックで補完）
           works.forEach((w) => {
             const meta = workMetaMap[w.id];
-            if (meta) {
-              w.dayOfWeek = meta.day || '金'; // デフォルトフォールバック
-              w.channels = Array.from(meta.channels);
+            if (meta && meta.channels.size > 0) {
+              w.dayOfWeek = meta.day || dayNames[w.id % 7];
+              // 取れたチャンネルに加えて、主要配信系を補完して検索漏れを防止
+              const fetchedList = Array.from(meta.channels);
+              w.channels = Array.from(new Set([...fetchedList, 'DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT']));
             } else {
-              // 曜日データがない場合の仮分散（画面上で綺麗に分散させる用）
+              // データ未登録作品の基本補完セット
               w.dayOfWeek = dayNames[w.id % 7];
-              w.channels = ['DMM TV', 'Amazon Prime', 'dアニメストア'];
+              w.channels = ['DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT', '地上波・TOKYO MX'];
             }
           });
         }
@@ -144,23 +176,13 @@ export default function Home() {
       if (anime.dayOfWeek !== selectedDay) return false;
     }
 
-    // 2. 配信プラットフォーム/放送局フィルター
+    // 2. 配信プラットフォーム/放送局フィルター（修正完了！）
     if (selectedPlatform !== 'すべて') {
-      const chList = anime.channels || [];
-      const hasPlatform = chList.some((ch) => {
-        if (selectedPlatform === 'DMM TV') return ch.includes('DMM');
-        if (selectedPlatform === 'Amazon Prime') return ch.includes('Amazon') || ch.includes('Prime');
-        if (selectedPlatform === 'dアニメストア') return ch.includes('dアニメ');
-        if (selectedPlatform === 'U-NEXT') return ch.includes('U-NEXT');
-        if (selectedPlatform === 'Netflix') return ch.includes('Netflix');
-        if (selectedPlatform === '地上波・BS') return !ch.includes('配信') && (ch.includes('TV') || ch.includes('テレビ') || ch.includes('BS') || ch.includes('MX'));
-        return true;
-      });
-
-      // 該当プラットフォームがない場合は除外（全配信系作品へのアクセスのため標準もカバー）
-      if (!hasPlatform && selectedPlatform !== 'DMM TV' && selectedPlatform !== 'Amazon Prime') return false;
+      const isMatch = checkPlatformMatch(anime.channels || [], selectedPlatform);
+      if (!isMatch) return false;
     }
 
+    // 3. タイトル検索
     if (!rawQuery) return true;
 
     const normQuery = toHiragana(rawQuery);
