@@ -1,69 +1,306 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState } from 'react';
+import { Search, Tv, ExternalLink, Calendar, Film, Sparkles, BookOpen, Clock } from 'lucide-react';
+
+// 2026年秋アニメのリアルなデータ一覧
+const ANIME_DATA = [
+  {
+    id: '1',
+    title: '薬屋のひとりごと 第3期',
+    hiraganaTitle: 'くすりやのひとりごと',
+    totalEpisodes: 12,
+    currentEpisode: 3,
+    finalEpisodeDate: '2026-12-18',
+    broadcastSchedule: '毎週金曜 23:00〜 (日本テレビ系)',
+    fastestStream: 'ABEMA / U-NEXT 毎週金曜 24:00〜',
+    dayOfWeek: '金',
+    tags: ['ミステリー', '後宮', 'ドラマ'],
+    vodUrl: 'https://px.a8.net/svt/ejp?a8mat=EXAMPLE_DMM',
+    rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/EXAMPLE',
+  },
+  {
+    id: '2',
+    title: 'アオのハコ Season2',
+    hiraganaTitle: 'あおのはこ',
+    totalEpisodes: 12,
+    currentEpisode: 3,
+    finalEpisodeDate: '2026-12-20',
+    broadcastSchedule: '毎週日曜 16:30〜 (TBS系)',
+    fastestStream: 'Netflix / Prime Video 毎週日曜 17:00〜',
+    dayOfWeek: '日',
+    tags: ['青春', '部活', 'ラブコメ'],
+    vodUrl: 'https://px.a8.net/svt/ejp?a8mat=EXAMPLE_UNEXT',
+    rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/EXAMPLE',
+  },
+  {
+    id: '3',
+    title: '「氷の城壁」第2期',
+    hiraganaTitle: 'こおりのじょうへき',
+    totalEpisodes: 12,
+    currentEpisode: 3,
+    finalEpisodeDate: '2026-12-17',
+    broadcastSchedule: '毎週木曜 23:56〜 (TBS系列)',
+    fastestStream: 'dアニメストア / DMM TV 毎週木曜 24:30〜',
+    dayOfWeek: '木',
+    tags: ['学園', '青春', 'ドラマ'],
+    vodUrl: 'https://px.a8.net/svt/ejp?a8mat=EXAMPLE_DMM',
+    rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/EXAMPLE',
+  },
+  {
+    id: '4',
+    title: '東京リベンジャーズ 三天戦争編',
+    hiraganaTitle: 'とうきょうりべんじゃーず さんてんせんそうへん',
+    totalEpisodes: 13,
+    currentEpisode: 3,
+    finalEpisodeDate: '2026-12-25',
+    broadcastSchedule: '毎週金曜 25:23〜 (テレビ東京)',
+    fastestStream: 'Disney+ / Prime Video 毎週金曜 26:00〜',
+    dayOfWeek: '金',
+    tags: ['ヤンキー', 'タイムリープ', 'アクション'],
+    vodUrl: 'https://px.a8.net/svt/ejp?a8mat=EXAMPLE_UNEXT',
+    rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/EXAMPLE',
+  },
+  {
+    id: '5',
+    title: 'FX戦士くるみちゃん',
+    hiraganaTitle: 'えふえっくせんしくるみちゃん',
+    totalEpisodes: 12,
+    currentEpisode: 3,
+    finalEpisodeDate: '2026-12-17',
+    broadcastSchedule: '毎週木曜 22:30〜 (AT-X / TOKYO MX)',
+    fastestStream: 'ABEMA / dアニメストア 毎週木曜 23:00〜',
+    dayOfWeek: '木',
+    tags: ['投資', '日常', 'サスペンス'],
+    vodUrl: 'https://px.a8.net/svt/ejp?a8mat=EXAMPLE_DMM',
+    rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/EXAMPLE',
+  },
+  {
+    id: '6',
+    title: 'PSYREN -サイレン-',
+    hiraganaTitle: 'さいれん',
+    totalEpisodes: 24,
+    currentEpisode: 3,
+    finalEpisodeDate: '2027-03-22',
+    broadcastSchedule: '毎週月曜 23:00〜 (テレビ東京系列)',
+    fastestStream: 'U-NEXT / dアニメストア 毎週月曜 23:30〜',
+    dayOfWeek: '月',
+    tags: ['異能力', 'SF', 'バトル'],
+    vodUrl: 'https://px.a8.net/svt/ejp?a8mat=EXAMPLE_UNEXT',
+    rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/EXAMPLE',
+  },
+  {
+    id: '7',
+    title: 'らんま1/2 第3期',
+    hiraganaTitle: 'らんま',
+    totalEpisodes: 12,
+    currentEpisode: 3,
+    finalEpisodeDate: '2026-12-19',
+    broadcastSchedule: '毎週土曜 24:55〜 (日本テレビ)',
+    fastestStream: 'Netflix 独占配信 毎週土曜 25:30〜',
+    dayOfWeek: '土',
+    tags: ['ラブコメ', '格闘', 'コメディ'],
+    vodUrl: 'https://px.a8.net/svt/ejp?a8mat=EXAMPLE_DMM',
+    rakutenUrl: 'https://hb.afl.rakuten.co.jp/hgc/EXAMPLE',
+  },
+];
+
+const DAYS = ['すべて', '月', '火', '水', '木', '金', '土', '日'];
 
 export default function Home() {
+  const [selectedDay, setSelectedDay] = useState('すべて');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // フィルタリング処理
+  const filteredAnime = ANIME_DATA.filter((anime) => {
+    const matchesDay = selectedDay === 'すべて' || anime.dayOfWeek === selectedDay;
+    const matchesSearch = anime.title.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesDay && matchesSearch;
+  });
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+      {/* 1. ヘッダー */}
+      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-4 py-3">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🦡</span>
+            <span className="text-xl font-extrabold tracking-wider bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
+              Miier <span className="text-xs font-normal text-slate-400">（ミーア）</span>
+            </span>
+          </div>
+          <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+            怠惰型アニメまとめ
+          </span>
+        </div>
+      </header>
+
+      {/* 2. ヒーローセクション (背伸び vs ふんぞり返り) */}
+      <section className="bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80 px-4 py-10">
+        <div className="max-w-3xl mx-auto text-center space-y-4">
+          <div className="inline-flex items-center gap-2 bg-slate-800/80 text-amber-300 text-xs px-3 py-1.5 rounded-full border border-amber-500/20">
+            <Sparkles className="w-3.5 h-3.5" />
+            オタクよ、もう背伸びするな。ふんぞり返ってアニメを浴びろ。
+          </div>
+          
+          <h1 className="text-2xl sm:text-4xl font-black text-slate-100 tracking-tight leading-tight">
+            全何話？いつ放送？どこで配信？<br />
+            <span className="text-amber-400">1画面でぜんぶ解決。</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+
+          {/* ビフォーアフター比較カード */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6 text-left">
+            <div className="p-3.5 rounded-xl bg-red-950/20 border border-red-900/30 text-xs space-y-1">
+              <div className="font-bold text-red-400 flex items-center gap-1">
+                <span>😵‍💫 従来のオタク（背伸びモード）</span>
+              </div>
+              <p className="text-slate-400">
+                各テレビ局・配信サイト・公式Xを行き来してスケジュール確認…検索で何タブも開いてヘトヘト。
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/30 text-xs space-y-1">
+              <div className="font-bold text-amber-400 flex items-center gap-1">
+                <span>🦡 Miierを使うオタク（怠惰モード）</span>
+              </div>
+              <p className="text-slate-300">
+                コタツでふんぞり返ったまま、今夜の放送・配信・最終回予定日を1秒で確認完了！
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+      </section>
+
+      {/* 3. メインコンテンツ（検索＆フィルター＆カード一覧） */}
+      <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+        {/* 検索・曜日切り替え */}
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+          {/* 曜日タブ */}
+          <div className="flex items-center gap-1 bg-slate-900 p-1.5 rounded-xl border border-slate-800 overflow-x-auto w-full sm:w-auto">
+            {DAYS.map((day) => (
+              <button
+                key={day}
+                onClick={() => setSelectedDay(day)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
+                  selectedDay === day
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                {day}
+              </button>
+            ))}
+          </div>
+
+          {/* 検索バー */}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              placeholder="作品名を検索..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-900 text-slate-200 text-xs pl-9 pr-3 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-amber-500 transition-colors"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </div>
         </div>
+
+        {/* アニメカードグリッド */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredAnime.map((anime) => {
+            const isNearFinal = anime.totalEpisodes - anime.currentEpisode <= 2;
+            return (
+              <div
+                key={anime.id}
+                className="bg-slate-900/90 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 space-y-4 shadow-lg transition-all"
+              >
+                {/* タイトル＆バッジ */}
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-100">{anime.title}</h2>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {anime.tags.map((tag) => (
+                        <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 話数カウンターバッジ */}
+                  <div className="text-right shrink-0">
+                    <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      第{anime.currentEpisode}話 / 全{anime.totalEpisodes}話
+                    </span>
+                    {isNearFinal && (
+                      <div className="text-[10px] text-rose-400 font-bold mt-1 animate-pulse">
+                        ⚠️ 最終回目前！
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 放送・配信情報 */}
+                <div className="space-y-2 text-xs bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Tv className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="font-semibold text-slate-400">地上波:</span>
+                    <span>{anime.broadcastSchedule}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Film className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    <span className="font-semibold text-slate-400">最速配信:</span>
+                    <span>{anime.fastestStream}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="font-semibold text-slate-400">最終話予定:</span>
+                    <span className="font-bold text-emerald-300">{anime.finalEpisodeDate} 頃</span>
+                  </div>
+                </div>
+
+                {/* アクションボタン（アフィリエイトリンク挿入箇所） */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  {/* VOD配信ボタン (A8.net等の高単価案件) */}
+                  <a
+                    href={anime.vodUrl}
+                    target="_blank"
+                    rel="nofollow noopener" // ⚠️ A8.netで必須の安全設定！
+                    className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold text-xs py-2 px-3 rounded-xl transition-all shadow-md active:scale-95"
+                  >
+                    <span>最速配信で観る</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+
+                  {/* 原作・グッズボタン (楽天アフィリエイト) */}
+                  <a
+                    href={anime.rakutenUrl}
+                    target="_blank"
+                    rel="nofollow noopener"
+                    className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs py-2 px-3 rounded-xl border border-slate-700 transition-all active:scale-95"
+                  >
+                    <BookOpen className="w-3 h-3 text-amber-400" />
+                    <span>原作・グッズ</span>
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {filteredAnime.length === 0 && (
+          <div className="text-center py-12 space-y-2 text-slate-500 text-sm">
+            <p>該当するアニメが見つかりませんでした… 🦡</p>
+          </div>
+        )}
       </main>
+
+      {/* 4. フッター */}
+      <footer className="border-t border-slate-800 mt-16 py-8 text-center text-xs text-slate-500 space-y-2">
+        <p>© 2026 Miier (ミーア) - ふんぞり返ってアニメを浴びるWebアプリ</p>
+        <p className="text-[10px] text-slate-600">
+          ※当サイトのアフィリエイトリンクには rel="nofollow noopener" が適切に設定されています。
+        </p>
+      </footer>
     </div>
   );
 }
