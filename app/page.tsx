@@ -1,41 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Tv, ExternalLink, Calendar, Film, BookOpen, RefreshCw, Loader2 } from 'lucide-react';
+import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2 } from 'lucide-react';
 
 // カタカナをひらがなに変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
   return str.replace(/[\u30a1-\u30f6]/g, (match) =>
     String.fromCharCode(match.charCodeAt(0) - 0x60)
   );
-};
-
-// 現在の年月から「今期のシーズンコード（例: 2026-autumn）」を自動計算する関数
-const getCurrentSeasonCode = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-
-  let season = 'winter';
-  if (month >= 4 && month <= 6) season = 'spring';
-  else if (month >= 7 && month <= 9) season = 'summer';
-  else if (month >= 10 && month <= 12) season = 'autumn';
-
-  return `${year}-${season}`;
-};
-
-// 今期の表示用日本語名
-const getCurrentSeasonName = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-
-  let seasonJp = '冬';
-  if (month >= 4 && month <= 6) seasonJp = '春';
-  else if (month >= 7 && month <= 9) seasonJp = '夏';
-  else if (month >= 10 && month <= 12) seasonJp = '秋';
-
-  return `${year}年 ${seasonJp}アニメ`;
 };
 
 interface AnimeWork {
@@ -57,23 +29,36 @@ export default function Home() {
   const [animeList, setAnimeList] = useState<AnimeWork[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [seasonName, setSeasonName] = useState('今期');
 
   // 🔄 Annict APIから今期アニメを全件自動取得する関数
   const fetchAnnictAnime = async () => {
     setLoading(true);
     setErrorMsg('');
 
+    // 💡 ビルド時のエラーを防ぐため、実行時（ブラウザ側）で日付とシーズンを計算
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+
+    let season = 'winter';
+    let seasonJp = '冬';
+    if (month >= 4 && month <= 6) { season = 'spring'; seasonJp = '春'; }
+    else if (month >= 7 && month <= 9) { season = 'summer'; seasonJp = '夏'; }
+    else if (month >= 10 && month <= 12) { season = 'autumn'; seasonJp = '秋'; }
+
+    const seasonCode = `${year}-${season}`;
+    setSeasonName(`${year}年 ${seasonJp}アニメ`);
+
     const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
-    const seasonCode = getCurrentSeasonCode();
 
     if (!token) {
-      setErrorMsg('アクセストークンが設定されていません。.env.localまたはVercelの環境変数を確認してください。');
+      setErrorMsg('アクセストークンが設定されていません。Vercelの環境変数（Environment Variables）を確認してください。');
       setLoading(false);
       return;
     }
 
     try {
-      // Annict APIから今期（放送者数順）のアニメを最大50件自動取得
       const response = await fetch(
         `https://api.annict.com/v1/works?filter_season=${seasonCode}&sort_watchers_count=desc&per_page=50`,
         {
@@ -105,7 +90,6 @@ export default function Home() {
   const filteredAnime = animeList.filter((anime) => {
     const rawQuery = searchQuery.trim().toLowerCase();
 
-    // カテゴリ絞り込み
     if (selectedCategory !== 'すべて') {
       if (selectedCategory === 'TV・WEB' && !['TV', 'WEB'].includes(anime.media_text)) return false;
       if (selectedCategory === '映画・OVA' && !['MOVIE', 'OVA'].includes(anime.media_text)) return false;
@@ -134,7 +118,7 @@ export default function Home() {
 
           <div className="flex items-center gap-2">
             <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">
-              {getCurrentSeasonName()} 自動更新中
+              {seasonName} 自動更新中
             </span>
             <button
               onClick={fetchAnnictAnime}
@@ -151,7 +135,6 @@ export default function Home() {
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* 検索・フィルター */}
         <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
-          {/* カテゴリ切り替え */}
           <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto">
             {DAYS.map((cat) => (
               <button
@@ -168,7 +151,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* 検索バー */}
           <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -181,21 +163,18 @@ export default function Home() {
           </div>
         </div>
 
-        {/* エラーメッセージ表示 */}
         {errorMsg && (
           <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs">
             {errorMsg}
           </div>
         )}
 
-        {/* ロード中表示 */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
             <p className="text-xs">Annict APIから今期アニメ全件を自動読み込み中...</p>
           </div>
         ) : (
-          /* 動的アニメカードグリッド */
           <div>
             <div className="mb-3 text-xs text-slate-500 font-medium">
               今期アニメ {filteredAnime.length} 件取得完了
@@ -203,7 +182,6 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredAnime.map((anime) => {
-                // 各種アフィリエイト・検索リンクの動的生成
                 const searchDmmUrl = `https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID&extra=${encodeURIComponent(
                   anime.title
                 )}`;
@@ -234,7 +212,6 @@ export default function Home() {
                         )}
                       </div>
 
-                      {/* 公式リンク・各種配信情報ボタン */}
                       <div className="space-y-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <div className="flex items-center gap-2 text-slate-700">
                           <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
@@ -258,7 +235,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* ボタンリンク */}
                     <div className="grid grid-cols-2 gap-2 pt-2">
                       <a
                         href={searchDmmUrl}
