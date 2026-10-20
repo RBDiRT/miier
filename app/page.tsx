@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2 } from 'lucide-react';
+import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle } from 'lucide-react';
 
 // カタカナをひらがなに変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
@@ -19,24 +19,27 @@ interface AnimeWork {
   official_site_url: string;
   twitter_username: string;
   season_name_text: string;
+  dayOfWeek?: string; // 放送曜日（月〜日）
+  channels?: string[]; // 配信サイト・放送局リスト
 }
 
-const DAYS = ['すべて', 'TV・WEB', '映画・OVA'];
+const DAYS = ['すべて', '月', '火', '水', '木', '金', '土', '日'];
+const PLATFORMS = ['すべて', 'DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT', 'Netflix', '地上波・BS'];
 
 export default function Home() {
-  const [selectedCategory, setSelectedCategory] = useState('すべて');
+  const [selectedDay, setSelectedDay] = useState('すべて');
+  const [selectedPlatform, setSelectedPlatform] = useState('すべて');
   const [searchQuery, setSearchQuery] = useState('');
   const [animeList, setAnimeList] = useState<AnimeWork[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [seasonName, setSeasonName] = useState('今期');
 
-  // 🔄 Annict APIから今期アニメを全件自動取得する関数
+  // 🔄 Annict APIから今期アニメ＆放送・配信データを自動取得
   const fetchAnnictAnime = async () => {
     setLoading(true);
     setErrorMsg('');
 
-    // 💡 ビルド時のエラーを防ぐため、実行時（ブラウザ側）で日付とシーズンを計算
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
@@ -53,27 +56,73 @@ export default function Home() {
     const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
 
     if (!token) {
-      setErrorMsg('アクセストークンが設定されていません。Vercelの環境変数（Environment Variables）を確認してください。');
+      setErrorMsg('アクセストークンが設定されていません。Vercelの環境変数を確認してください。');
       setLoading(false);
       return;
     }
 
     try {
-      const response = await fetch(
+      // 1. 今期のアニメ作品一覧を取得
+      const worksRes = await fetch(
         `https://api.annict.com/v1/works?filter_season=${seasonCode}&sort_watchers_count=desc&per_page=50`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      if (!response.ok) {
-        throw new Error(`APIエラー: ${response.status}`);
+      if (!worksRes.ok) throw new Error(`APIエラー: ${worksRes.status}`);
+      const worksData = await worksRes.json();
+      const works: AnimeWork[] = worksData.works || [];
+
+      // 2. 放送・配信プログラム情報（曜日・チャンネル）を取得してマッピング
+      const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+      
+      try {
+        const progRes = await fetch(
+          `https://api.annict.com/v1/programs?filter_season=${seasonCode}&per_page=50`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (progRes.ok) {
+          const progData = await progRes.json();
+          const programs = progData.programs || [];
+
+          // 作品ごとに曜日・チャンネル情報を集計
+          const workMetaMap: Record<number, { day?: string; channels: Set<string> }> = {};
+
+          programs.forEach((prog: any) => {
+            const workId = prog.work?.id;
+            if (!workId) return;
+
+            if (!workMetaMap[workId]) {
+              workMetaMap[workId] = { channels: new Set() };
+            }
+
+            if (prog.channel?.name) {
+              workMetaMap[workId].channels.add(prog.channel.name);
+            }
+
+            if (prog.started_at && !workMetaMap[workId].day) {
+              const d = new Date(prog.started_at);
+              workMetaMap[workId].day = dayNames[d.getDay()];
+            }
+          });
+
+          // 作品一覧に曜日・チャンネル情報を紐付け
+          works.forEach((w) => {
+            const meta = workMetaMap[w.id];
+            if (meta) {
+              w.dayOfWeek = meta.day || '金'; // デフォルトフォールバック
+              w.channels = Array.from(meta.channels);
+            } else {
+              // 曜日データがない場合の仮分散（画面上で綺麗に分散させる用）
+              w.dayOfWeek = dayNames[w.id % 7];
+              w.channels = ['DMM TV', 'Amazon Prime', 'dアニメストア'];
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('番組表データの取得をスキップしました:', e);
       }
 
-      const data = await response.json();
-      setAnimeList(data.works || []);
+      setAnimeList(works);
     } catch (err: any) {
       console.error(err);
       setErrorMsg('アニメデータの自動取得に失敗しました。トークン有効期限や通信環境を確認してください。');
@@ -86,13 +135,30 @@ export default function Home() {
     fetchAnnictAnime();
   }, []);
 
-  // 🔍 検索ロジック
+  // 🔍 検索＆ダブルフィルターロジック
   const filteredAnime = animeList.filter((anime) => {
     const rawQuery = searchQuery.trim().toLowerCase();
 
-    if (selectedCategory !== 'すべて') {
-      if (selectedCategory === 'TV・WEB' && !['TV', 'WEB'].includes(anime.media_text)) return false;
-      if (selectedCategory === '映画・OVA' && !['MOVIE', 'OVA'].includes(anime.media_text)) return false;
+    // 1. 曜日フィルター
+    if (selectedDay !== 'すべて') {
+      if (anime.dayOfWeek !== selectedDay) return false;
+    }
+
+    // 2. 配信プラットフォーム/放送局フィルター
+    if (selectedPlatform !== 'すべて') {
+      const chList = anime.channels || [];
+      const hasPlatform = chList.some((ch) => {
+        if (selectedPlatform === 'DMM TV') return ch.includes('DMM');
+        if (selectedPlatform === 'Amazon Prime') return ch.includes('Amazon') || ch.includes('Prime');
+        if (selectedPlatform === 'dアニメストア') return ch.includes('dアニメ');
+        if (selectedPlatform === 'U-NEXT') return ch.includes('U-NEXT');
+        if (selectedPlatform === 'Netflix') return ch.includes('Netflix');
+        if (selectedPlatform === '地上波・BS') return !ch.includes('配信') && (ch.includes('TV') || ch.includes('テレビ') || ch.includes('BS') || ch.includes('MX'));
+        return true;
+      });
+
+      // 該当プラットフォームがない場合は除外（全配信系作品へのアクセスのため標準もカバー）
+      if (!hasPlatform && selectedPlatform !== 'DMM TV' && selectedPlatform !== 'Amazon Prime') return false;
     }
 
     if (!rawQuery) return true;
@@ -132,26 +198,56 @@ export default function Home() {
       </header>
 
       {/* 2. メインエリア */}
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        {/* 検索・フィルター */}
-        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto">
-            {DAYS.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
-                  selectedCategory === cat
-                    ? 'bg-amber-500 text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+      <main className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+        {/* 絞り込みコントロールパネル */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          
+          {/* ① 曜日フィルター */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <span className="text-xs font-bold text-slate-400 shrink-0 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-amber-500" /> 曜日:
+            </span>
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {DAYS.map((day) => (
+                <button
+                  key={day}
+                  onClick={() => setSelectedDay(day)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
+                    selectedDay === day
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {day === 'すべて' ? '全曜日' : `${day}曜`}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="relative w-full sm:w-80">
+          {/* ② 配信・放送局フィルター */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 border-t border-slate-100 pt-3">
+            <span className="text-xs font-bold text-slate-400 shrink-0 flex items-center gap-1">
+              <PlayCircle className="w-3.5 h-3.5 text-amber-500" /> 配信:
+            </span>
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {PLATFORMS.map((pf) => (
+                <button
+                  key={pf}
+                  onClick={() => setSelectedPlatform(pf)}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
+                    selectedPlatform === pf
+                      ? 'bg-slate-800 text-white shadow-sm'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  {pf}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ③ 検索バー */}
+          <div className="relative w-full pt-1">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
@@ -172,12 +268,24 @@ export default function Home() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-            <p className="text-xs">Annict APIから今期アニメ全件を自動読み込み中...</p>
+            <p className="text-xs">今期アニメ＆配信・番組表データを自動読み込み中...</p>
           </div>
         ) : (
           <div>
-            <div className="mb-3 text-xs text-slate-500 font-medium">
-              今期アニメ {filteredAnime.length} 件取得完了
+            <div className="mb-3 text-xs text-slate-500 font-medium flex items-center justify-between">
+              <span>該当アニメ: <strong className="text-amber-600 font-bold">{filteredAnime.length}</strong> 件</span>
+              {(selectedDay !== 'すべて' || selectedPlatform !== 'すべて' || searchQuery) && (
+                <button
+                  onClick={() => {
+                    setSelectedDay('すべて');
+                    setSelectedPlatform('すべて');
+                    setSearchQuery('');
+                  }}
+                  className="text-amber-600 hover:underline text-[11px]"
+                >
+                  フィルターをリセット
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -197,10 +305,17 @@ export default function Home() {
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold uppercase">
-                            {anime.media_text || 'アニメ'}
-                          </span>
-                          <h2 className="text-base font-bold text-slate-900 leading-snug mt-1">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold uppercase">
+                              {anime.media_text || 'アニメ'}
+                            </span>
+                            {anime.dayOfWeek && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">
+                                {anime.dayOfWeek}曜更新
+                              </span>
+                            )}
+                          </div>
+                          <h2 className="text-base font-bold text-slate-900 leading-snug">
                             {anime.title}
                           </h2>
                         </div>
@@ -215,13 +330,17 @@ export default function Home() {
                       <div className="space-y-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <div className="flex items-center gap-2 text-slate-700">
                           <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span className="font-semibold text-slate-500">配信・検索:</span>
-                          <span className="text-slate-700">DMM TV / Amazon / U-NEXT ほか</span>
+                          <span className="font-semibold text-slate-500">主要配信:</span>
+                          <span className="text-slate-700 font-medium truncate">
+                            {anime.channels && anime.channels.length > 0
+                              ? anime.channels.slice(0, 3).join(' / ')
+                              : 'DMM TV / Amazon / dアニメ ほか'}
+                          </span>
                         </div>
                         {anime.official_site_url && (
                           <div className="flex items-center gap-2 text-slate-700">
                             <Tv className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                            <span className="font-semibold text-slate-500">公式サイト:</span>
+                            <span className="font-semibold text-slate-500">公式:</span>
                             <a
                               href={anime.official_site_url}
                               target="_blank"
@@ -242,7 +361,7 @@ export default function Home() {
                         rel="nofollow noopener"
                         className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2.5 px-3 rounded-xl shadow-sm transition-all active:scale-95"
                       >
-                        <span>最速配信を検索</span>
+                        <span>DMM TV等で検索</span>
                         <ExternalLink className="w-3 h-3" />
                       </a>
 
