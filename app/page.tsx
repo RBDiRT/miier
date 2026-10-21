@@ -96,6 +96,34 @@ export default function Home() {
     }
   };
 
+  // 🌟 この作品のキャストを全員まとめて一括推し登録 / 解除する関数
+  const toggleAllCastsForAnime = () => {
+    if (casts.length === 0) return;
+    const currentCastNames = casts
+      .map((c) => c.cast_name)
+      .filter((name) => name && name !== '未登録');
+
+    if (currentCastNames.length === 0) return;
+
+    // 全員すでに登録済みかチェック
+    const isAllFav = currentCastNames.every((name) => favCasts.includes(name));
+
+    let updated: string[];
+    if (isAllFav) {
+      // 全員解除
+      updated = favCasts.filter((name) => !currentCastNames.includes(name));
+    } else {
+      // 未登録の人を全員追加
+      const newNames = currentCastNames.filter((name) => !favCasts.includes(name));
+      updated = [...favCasts, ...newNames];
+    }
+
+    setFavCasts(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
+    }
+  };
+
   // 声優お気に入りの切り替え
   const toggleFavCast = (castName: string) => {
     let updated: string[];
@@ -714,21 +742,26 @@ export default function Home() {
                 <div className="space-y-3 pt-1">
                   {/* キャスト・声優一覧（推し登録ボタン付き） */}
                   <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
-                    <span className="text-xs font-bold text-slate-600 flex items-center justify-between">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-600">
                       <span className="flex items-center gap-1.5">
-                        {/* 🌟 提案2：モーダル内の推しCVアピールバナー */}
-                        {selectedAnime.casts?.some((c) => favCasts.some((f) => f.replace(/[\s ]+/g, '').toLowerCase() === c.replace(/[\s{]+/g, '').toLowerCase())) && (
-                        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3 flex items-center gap-2 text-purple-900 text-xs font-bold">
-                          <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
-                          <span>推し声優が出演している注目作品です！</span>
-                        </div>
-                        )}
-                        <Users className="w-3.5 h-3.5 text-purple-600" /> キャスト・声優（タップで★推し登録）
+                        <Users className="w-3.5 h-3.5 text-purple-600" /> キャスト・声優
                       </span>
-                      {favCasts.length > 0 && (
-                        <span className="text-[10px] text-purple-600 font-bold">推し声優: {favCasts.length}人</span>
+                      
+                      {/* 🌟 一括推し登録 / 解除ボタン */}
+                      {!loadingCasts && casts.length > 0 && (
+                        <button
+                          onClick={toggleAllCastsForAnime}
+                          className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 active:scale-95 transition-all flex items-center gap-1"
+                        >
+                          <Sparkles className="w-3 h-3 text-purple-600" />
+                          <span>
+                            {casts.every((c) => favCasts.includes(c.cast_name))
+                              ? 'キャストを全員解除'
+                              : 'キャストを全員推し登録！'}
+                          </span>
+                        </button>
                       )}
-                    </span>
+                    </div>
 
                     {loadingCasts ? (
                       <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
