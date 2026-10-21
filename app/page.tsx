@@ -56,6 +56,7 @@ export default function Home() {
   // データ用ステート
   const [animeList, setAnimeList] = useState<AnimeWork[]>([]);
   const [favorites, setFavorites] = useState<number[]>([]);
+  const [favCasts, setFavCasts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [seasonName, setSeasonName] = useState('今期');
@@ -66,52 +67,21 @@ export default function Home() {
   const [casts, setCasts] = useState<CastInfo[]>([]);
   const [loadingCasts, setLoadingCasts] = useState(false);
 
-  // 声優お気に入り用のステート
-  const [favCasts, setFavCasts] = useState<string[]>([]);
-
-  // 声優お気に入りデータの読み込み
+  // お気に入りデータの読み込み（作品＆推し声優）
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const savedFavs = localStorage.getItem('miier_favorites');
+      if (savedFavs) {
+        try { setFavorites(JSON.parse(savedFavs)); } catch (e) { console.error(e); }
+      }
       const savedCasts = localStorage.getItem('miier_fav_casts');
       if (savedCasts) {
-        try {
-          setFavCasts(JSON.parse(savedCasts));
-        } catch (e) {
-          console.error(e);
-        }
+        try { setFavCasts(JSON.parse(savedCasts)); } catch (e) { console.error(e); }
       }
     }
   }, []);
 
-  // 声優お気に入りの切り替え関数
-  const toggleFavCast = (castName: string) => {
-    let updated: string[];
-    if (favCasts.includes(castName)) {
-      updated = favCasts.filter((c) => c !== castName);
-    } else {
-      updated = [...favCasts, castName];
-    }
-    setFavCasts(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
-    }
-  };
-
-  // お気に入りデータの読み込み（ローカルストレージ）
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('miier_favorites');
-      if (saved) {
-        try {
-          setFavorites(JSON.parse(saved));
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
-  }, []);
-
-  // お気に入りの切り替え
+  // 作品お気に入りの切り替え
   const toggleFavorite = (id: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     let updated: number[];
@@ -126,7 +96,21 @@ export default function Home() {
     }
   };
 
-  // モーダルを開く ＆ 声優（キャスト）データを自動取得
+  // 声優お気に入りの切り替え
+  const toggleFavCast = (castName: string) => {
+    let updated: string[];
+    if (favCasts.includes(castName)) {
+      updated = favCasts.filter((c) => c !== castName);
+    } else {
+      updated = [...favCasts, castName];
+    }
+    setFavCasts(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
+    }
+  };
+
+  // モーダルを開く ＆ 声優データを個別取得
   const openModal = async (anime: AnimeWork) => {
     setSelectedAnime(anime);
     setActiveModalPlatform(anime.channels[0] || 'DMM TV');
@@ -137,7 +121,7 @@ export default function Home() {
     if (token) {
       try {
         const res = await fetch(
-          `https://api.annict.com/v1/casts?filter_work_id=${anime.id}&sort_id=asc&per_page=12`,
+          `https://api.annict.com/v1/casts?filter_work_id=${anime.id}&sort_id=asc&per_page=20`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (res.ok) {
@@ -155,7 +139,7 @@ export default function Home() {
     setLoadingCasts(false);
   };
 
-  // 🔄 Annict APIから今期アニメ＆番組表データを自動取得
+  // 🔄 Annict APIから今期アニメ・番組表・キャストデータを一括安全取得
   const fetchAnnictAnime = async () => {
     setLoading(true);
     setErrorMsg('');
@@ -182,6 +166,7 @@ export default function Home() {
     }
 
     try {
+      // 1. 今期アニメ一覧を取得
       const worksRes = await fetch(
         `https://api.annict.com/v1/works?filter_season=${seasonCode}&sort_watchers_count=desc&per_page=50`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -191,6 +176,7 @@ export default function Home() {
       const worksData = await worksRes.json();
       const rawWorks = worksData.works || [];
 
+      // 2. 番組表データを取得
       const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
       const channelMap: Record<number, { day?: string; channels: Set<string> }> = {};
 
@@ -223,45 +209,35 @@ export default function Home() {
         console.warn('配信局データの取得をスキップしました:', e);
       }
 
-      // 2-2. 今期アニメの全キャストデータをページネーションで全件漏れなく取得！
-      const rawWorkIds = rawWorks.map((w: any) => w.id);
+      // 3. キャストデータを10作品ずつチャンク分割して安全に全件取得（URL超長エラー防止！）
       const castMap: Record<number, string[]> = {};
-
-      if (rawWorkIds.length > 0) {
+      const chunkSize = 10;
+      for (let i = 0; i < rawWorks.length; i += chunkSize) {
+        const chunkIds = rawWorks.slice(i, i + chunkSize).map((w: any) => w.id).join(',');
         try {
-          let page = 1;
-          let hasMore = true;
-          // 100件ずつ最大5ページ（500キャスト分）までループ取得
-          while (hasMore && page <= 5) {
-            const castRes = await fetch(
-              `https://api.annict.com/v1/casts?filter_work_id=${rawWorkIds.join(',')}&page=${page}&per_page=100`,
-              { headers: { Authorization: `Bearer ${token}` } }
-            );
-            if (castRes.ok) {
-              const castData = await castRes.json();
-              const fetchedCasts = castData.casts || [];
-              if (fetchedCasts.length === 0) {
-                hasMore = false;
-              } else {
-                fetchedCasts.forEach((c: any) => {
-                  const wId = c.work?.id;
-                  const personName = c.person?.name || c.name;
-                  if (wId && personName) {
-                    if (!castMap[wId]) castMap[wId] = [];
-                    castMap[wId].push(personName);
-                  }
-                });
-                page++;
+          const castRes = await fetch(
+            `https://api.annict.com/v1/casts?filter_work_id=${chunkIds}&per_page=100`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (castRes.ok) {
+            const castData = await castRes.json();
+            (castData.casts || []).forEach((c: any) => {
+              const wId = c.work?.id;
+              const personName = c.person?.name || c.name;
+              if (wId && personName) {
+                if (!castMap[wId]) castMap[wId] = [];
+                if (!castMap[wId].includes(personName)) {
+                  castMap[wId].push(personName);
+                }
               }
-            } else {
-              hasMore = false;
-            }
+            });
           }
         } catch (e) {
-          console.warn('キャストデータの取得をスキップしました:', e);
+          console.warn('キャスト取得エラー:', e);
         }
       }
 
+      // 4. データ整形
       const formattedWorks: AnimeWork[] = rawWorks.map((w: any, idx: number) => {
         const meta = channelMap[w.id];
         const fetchedChannels = meta ? Array.from(meta.channels) : [];
@@ -316,10 +292,12 @@ export default function Home() {
 
   // 🔍 検索＆フィルター判定ロジック
   const filteredAnime = animeList.filter((anime) => {
+    // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) {
       return false;
     }
 
+    // 2. 配信/放送局フィルター
     if (selectedPlatform !== 'すべて') {
       const hasMatch = anime.channels.some((ch) => {
         const c = ch.toLowerCase();
@@ -338,23 +316,25 @@ export default function Home() {
       if (!hasMatch) return false;
     }
 
+    // 3. お気に入りフィルター（作品 / 声優）
     if (selectedFavType === '作品') {
       if (!favorites.includes(anime.id)) return false;
     } else if (selectedFavType === '声優') {
       if (favCasts.length === 0) return false;
-      // 作品のキャストに推し声優が含まれているか直接チェック！
       const hasFavCast = anime.casts?.some((castName) => favCasts.includes(castName));
       if (!hasFavCast) return false;
     }
 
+    // 4. 検索キーワードフィルター
     const rawQuery = searchQuery.trim().toLowerCase();
     if (!rawQuery) return true;
 
     const normQuery = toHiragana(rawQuery);
     const normTitle = toHiragana(anime.title.toLowerCase());
     const normKana = toHiragana((anime.title_kana || '').toLowerCase());
+    const hasCastQueryMatch = anime.casts?.some((c) => toHiragana(c.toLowerCase()).includes(normQuery));
 
-    return normTitle.includes(normQuery) || normKana.includes(normQuery);
+    return normTitle.includes(normQuery) || normKana.includes(normQuery) || hasCastQueryMatch;
   });
 
   return (
@@ -495,7 +475,7 @@ export default function Home() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="作品名・ひらがな検索..."
+              placeholder="作品名・ひらがな・声優名で検索..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-50 text-slate-800 text-xs pl-9 pr-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-amber-500 focus:bg-white transition-colors"
@@ -512,7 +492,7 @@ export default function Home() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-            <p className="text-xs">今期アニメ＆番組表データを読み込み中...</p>
+            <p className="text-xs">今期アニメ＆番組表＆キャストデータを読み込み中...</p>
           </div>
         ) : (
           <div>
@@ -539,10 +519,12 @@ export default function Home() {
             {filteredAnime.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 space-y-2">
                 <p className="text-sm font-bold text-slate-600">
-                  {selectedFavType !== 'すべて' ? 'お気に入りに登録されたアニメがありません' : '該当するアニメが見つかりませんでした'}
+                  {selectedFavType !== 'すべて' ? 'お気に入りに該当する作品がありません' : '該当するアニメが見つかりませんでした'}
                 </p>
                 <p className="text-xs text-slate-400">
-                  {selectedFavType !== 'すべて' ? 'アニメカード右上の「★」を押してお気に入りに追加してみよう！' : 'フィルター条件を変更するか「リセット」を押してください。'}
+                  {selectedFavType === '声優'
+                    ? 'アニメの詳細画面（モーダル）を開いて声優さんを「★ 推し登録」してみよう！'
+                    : 'フィルター条件を変更するか「リセット」を押してください。'}
                 </p>
               </div>
             ) : (
@@ -600,7 +582,7 @@ export default function Home() {
 
                         <div className="flex items-center justify-between text-[10px] text-amber-600 font-bold pt-1 border-t border-slate-100">
                           <span className="flex items-center gap-0.5">
-                            <Sparkles className="w-3 h-3 text-amber-500" /> 詳細・話数
+                            <Sparkles className="w-3 h-3 text-amber-500" /> 詳細・声優
                           </span>
                           <span>➔</span>
                         </div>
@@ -697,7 +679,7 @@ export default function Home() {
                       <span>【{activeModalPlatform || '配信サイト'}】配信・放送状況</span>
                     </span>
                     <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-amber-500 text-white">
-                      {selectedAnime.episodes_count > 0 ? `全 ${selectedAnime.episodes_count} 話` : '第4話まで放送済み'}
+                      {selectedAnime.episodes_count > 0 ? `全 ${selectedAnime.episodes_count} 話` : '最新話まで放送中'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">
@@ -708,10 +690,15 @@ export default function Home() {
 
                 {/* 3. キャスト・声優 ＆ 主題歌（OP/ED）情報 */}
                 <div className="space-y-3 pt-1">
-                  {/* キャスト・声優一覧 */}
+                  {/* キャスト・声優一覧（推し登録ボタン付き） */}
                   <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
-                    <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-purple-600" /> キャスト・声優（CV）
+                    <span className="text-xs font-bold text-slate-600 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-purple-600" /> キャスト・声優（タップで★推し登録）
+                      </span>
+                      {favCasts.length > 0 && (
+                        <span className="text-[10px] text-purple-600 font-bold">推し声優: {favCasts.length}人</span>
+                      )}
                     </span>
 
                     {loadingCasts ? (
@@ -720,7 +707,7 @@ export default function Home() {
                         <span>キャストデータを取得中...</span>
                       </div>
                     ) : casts.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
+                      <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
                         {casts.map((c, idx) => {
                           const isFavCast = favCasts.includes(c.cast_name);
                           return (
