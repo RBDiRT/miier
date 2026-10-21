@@ -69,54 +69,6 @@ export default function Home() {
   // 声優お気に入り用のステート
   const [favCasts, setFavCasts] = useState<string[]>([]);
 
-  // 推し声優が出演している作品IDのリスト
-  const [favCastWorkIds, setFavCastWorkIds] = useState<number[]>([]);
-
-  // 推し声優の出演作品IDをAnnict APIから正しく取得する関数
-  useEffect(() => {
-    const fetchFavCastWorks = async () => {
-      const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
-      if (!token || favCasts.length === 0) {
-        setFavCastWorkIds([]);
-        return;
-      }
-
-      try {
-        const workIdsSet = new Set<number>();
-        for (const castName of favCasts) {
-          // 1. まず「人物ID（Person ID）」を名前で検索
-          const personRes = await fetch(
-            `https://api.annict.com/v1/people?filter_name=${encodeURIComponent(castName)}&per_page=1`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          if (personRes.ok) {
-            const personData = await personRes.json();
-            const personId = personData.people?.[0]?.id;
-
-            // 2. 人物IDを使って「本当の出演作品ID」を取得！
-            if (personId) {
-              const castRes = await fetch(
-                `https://api.annict.com/v1/casts?filter_person_id=${personId}&per_page=50`,
-                { headers: { Authorization: `Bearer ${token}` } }
-              );
-              if (castRes.ok) {
-                const castData = await castRes.json();
-                (castData.casts || []).forEach((c: any) => {
-                  if (c.work?.id) workIdsSet.add(c.work.id);
-                });
-              }
-            }
-          }
-        }
-        setFavCastWorkIds(Array.from(workIdsSet));
-      } catch (e) {
-        console.warn('推し声優の作品ID取得エラー:', e);
-      }
-    };
-
-    fetchFavCastWorks();
-  }, [favCasts]);
-
   // 声優お気に入りデータの読み込み
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -271,6 +223,45 @@ export default function Home() {
         console.warn('配信局データの取得をスキップしました:', e);
       }
 
+      // 2-2. 今期アニメの全キャストデータをページネーションで全件漏れなく取得！
+      const rawWorkIds = rawWorks.map((w: any) => w.id);
+      const castMap: Record<number, string[]> = {};
+
+      if (rawWorkIds.length > 0) {
+        try {
+          let page = 1;
+          let hasMore = true;
+          // 100件ずつ最大5ページ（500キャスト分）までループ取得
+          while (hasMore && page <= 5) {
+            const castRes = await fetch(
+              `https://api.annict.com/v1/casts?filter_work_id=${rawWorkIds.join(',')}&page=${page}&per_page=100`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (castRes.ok) {
+              const castData = await castRes.json();
+              const fetchedCasts = castData.casts || [];
+              if (fetchedCasts.length === 0) {
+                hasMore = false;
+              } else {
+                fetchedCasts.forEach((c: any) => {
+                  const wId = c.work?.id;
+                  const personName = c.person?.name || c.name;
+                  if (wId && personName) {
+                    if (!castMap[wId]) castMap[wId] = [];
+                    castMap[wId].push(personName);
+                  }
+                });
+                page++;
+              }
+            } else {
+              hasMore = false;
+            }
+          }
+        } catch (e) {
+          console.warn('キャストデータの取得をスキップしました:', e);
+        }
+      }
+
       const formattedWorks: AnimeWork[] = rawWorks.map((w: any, idx: number) => {
         const meta = channelMap[w.id];
         const fetchedChannels = meta ? Array.from(meta.channels) : [];
@@ -306,6 +297,7 @@ export default function Home() {
           dayOfWeek: meta?.day || ['月', '火', '水', '木', '金', '土', '日'][(w.id || idx) % 7],
           channels: finalChannels,
           image_url: imageUrl,
+          casts: castMap[w.id] || [],
         };
       });
 
@@ -348,14 +340,11 @@ export default function Home() {
 
     if (selectedFavType === '作品') {
       if (!favorites.includes(anime.id)) return false;
-    } if (selectedFavType === '作品') {
-      if (!favorites.includes(anime.id)) return false;
-    } if (selectedFavType === '作品') {
-      if (!favorites.includes(anime.id)) return false;
     } else if (selectedFavType === '声優') {
       if (favCasts.length === 0) return false;
-      // ピンポイント検索でヒットした作品IDに含まれているか判定！
-      if (!favCastWorkIds.includes(anime.id)) return false;
+      // 作品のキャストに推し声優が含まれているか直接チェック！
+      const hasFavCast = anime.casts?.some((castName) => favCasts.includes(castName));
+      if (!hasFavCast) return false;
     }
 
     const rawQuery = searchQuery.trim().toLowerCase();
