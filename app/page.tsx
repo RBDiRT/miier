@@ -539,6 +539,13 @@ export default function Home() {
                 {filteredAnime.map((anime) => {
                   const isFav = favorites.includes(anime.id);
 
+                  // 🌟 推し声優の出演判定
+                  const normalize = (str: string) => str.replace(/[\s ]+/g, '').toLowerCase();
+                  const matchedFavCasts = (anime.casts || []).filter((c) =>
+                    favCasts.some((f) => normalize(f) === normalize(c))
+                  );
+                  const hasFavCast = matchedFavCasts.length > 0;
+
                   return (
                     <div
                       key={anime.id}
@@ -560,11 +567,19 @@ export default function Home() {
                           </div>
                         )}
 
-                        {/* 曜日タグ */}
-                        <div className="absolute top-2 left-2 flex items-center gap-1">
+                        {/* 曜日タグ ＆ 🌟推しCV出演バッジ */}
+                        <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
                           <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur text-white font-bold">
                             {anime.dayOfWeek}曜
                           </span>
+
+                          {/* 🎙️ 推し声優が出演している場合に表示 */}
+                          {hasFavCast && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-600 text-white font-bold flex items-center gap-0.5 shadow-md animate-pulse">
+                              <Mic className="w-2.5 h-2.5" />
+                              <span>{matchedFavCasts[0]}{matchedFavCasts.length > 1 ? ` 外${matchedFavCasts.length - 1}名` : ''}</span>
+                            </span>
+                          )}
                         </div>
 
                         {/* ★ お気に入りボタン */}
@@ -701,6 +716,13 @@ export default function Home() {
                   <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
                     <span className="text-xs font-bold text-slate-600 flex items-center justify-between">
                       <span className="flex items-center gap-1.5">
+                        {/* 🌟 提案2：モーダル内の推しCVアピールバナー */}
+                        {selectedAnime.casts?.some((c) => favCasts.some((f) => f.replace(/[\s ]+/g, '').toLowerCase() === c.replace(/[\s{]+/g, '').toLowerCase())) && (
+                        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3 flex items-center gap-2 text-purple-900 text-xs font-bold">
+                          <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                          <span>推し声優が出演している注目作品です！</span>
+                        </div>
+                        )}
                         <Users className="w-3.5 h-3.5 text-purple-600" /> キャスト・声優（タップで★推し登録）
                       </span>
                       {favCasts.length > 0 && (
