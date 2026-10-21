@@ -23,6 +23,7 @@ interface AnimeWork {
   dayOfWeek: string;
   channels: string[];
   image_url?: string;
+  casts?: string[];
 }
 
 // キャスト・声優情報の型定義
@@ -222,6 +223,31 @@ export default function Home() {
         console.warn('配信局データの取得をスキップしました:', e);
       }
 
+      // 2-2. 主要キャスト（声優）データを一括取得！
+      const castMap: Record<number, string[]> = {};
+      const workIds = rawWorks.map((w: any) => w.id).join(',');
+      if (workIds) {
+        try {
+          const castRes = await fetch(
+            `https://api.annict.com/v1/casts?filter_work_id=${workIds}&per_page=100`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (castRes.ok) {
+            const castData = await castRes.json();
+            (castData.casts || []).forEach((c: any) => {
+              const wId = c.work?.id;
+              const personName = c.person?.name || c.name;
+              if (wId && personName) {
+                if (!castMap[wId]) castMap[wId] = [];
+                castMap[wId].push(personName);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('キャスト一括取得をスキップしました:', e);
+        }
+      }
+
       const formattedWorks: AnimeWork[] = rawWorks.map((w: any, idx: number) => {
         const meta = channelMap[w.id];
         const fetchedChannels = meta ? Array.from(meta.channels) : [];
@@ -299,8 +325,13 @@ export default function Home() {
 
     if (selectedFavType === '作品') {
       if (!favorites.includes(anime.id)) return false;
-    } else if (selectedFavType === '声優') {
+    } if (selectedFavType === '作品') {
       if (!favorites.includes(anime.id)) return false;
+    } else if (selectedFavType === '声優') {
+      if (favCasts.length === 0) return false;
+      // 登録されている推し声優が作品のキャストに含まれているか判定！
+      const hasFavCast = anime.casts?.some((castName) => favCasts.includes(castName));
+      if (!hasFavCast) return false;
     }
 
     const rawQuery = searchQuery.trim().toLowerCase();
@@ -396,22 +427,14 @@ export default function Home() {
             </span>
             <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
               <button
-                onClick={() => setSelectedFavType('声優')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
-                  selectedFavType === '声優'
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
+                onClick={() => setSelectedFavType('すべて')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                  selectedFavType === 'すべて'
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
                 }`}
               >
-                <Mic className="w-3 h-3" />
-                <span>🎙️ 声優お気に入り</span>
-                {favCasts.length > 0 && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    selectedFavType === '声優' ? 'bg-white text-purple-800' : 'bg-purple-200 text-purple-900'
-                  }`}>
-                    {favCasts.length}人
-                  </span>
-                )}
+                指定なし
               </button>
 
               <button
@@ -443,9 +466,13 @@ export default function Home() {
               >
                 <Mic className="w-3 h-3" />
                 <span>🎙️ 声優お気に入り</span>
-                <span className="text-[9px] bg-purple-200 text-purple-900 px-1 py-0.2 rounded-md">
-                  開発中
-                </span>
+                {favCasts.length > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    selectedFavType === '声優' ? 'bg-white text-purple-800' : 'bg-purple-200 text-purple-900'
+                  }`}>
+                    {favCasts.length}人
+                  </span>
+                )}
               </button>
             </div>
           </div>
