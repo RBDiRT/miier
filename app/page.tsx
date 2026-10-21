@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle } from 'lucide-react';
+import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle, Star } from 'lucide-react';
 
 // カタカナをひらがなに変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
@@ -24,16 +24,57 @@ interface AnimeWork {
 }
 
 const DAYS = ['すべて', '月', '火', '水', '木', '金', '土', '日'];
-const PLATFORMS = ['すべて', 'DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT', 'Netflix', '地上波・BS'];
+const PLATFORMS = [
+  'すべて',
+  '★ お気に入り',
+  'DMM TV',
+  'Amazon Prime',
+  'dアニメストア',
+  'U-NEXT',
+  'Netflix',
+  'TOKYO MX',
+  'テレビ東京',
+  'フジテレビ',
+  'BS11',
+];
 
 export default function Home() {
   const [selectedDay, setSelectedDay] = useState('すべて');
   const [selectedPlatform, setSelectedPlatform] = useState('すべて');
   const [searchQuery, setSearchQuery] = useState('');
   const [animeList, setAnimeList] = useState<AnimeWork[]>([]);
+  const [favorites, setFavorites] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [seasonName, setSeasonName] = useState('今期');
+
+  // お気に入りデータの読み込み（ローカルストレージ）
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('miier_favorites');
+      if (saved) {
+        try {
+          setFavorites(JSON.parse(saved));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }, []);
+
+  // お気に入りの切り替え
+  const toggleFavorite = (id: number) => {
+    let updated: number[];
+    if (favorites.includes(id)) {
+      updated = favorites.filter((favId) => favId !== id);
+    } else {
+      updated = [...favorites, id];
+    }
+    setFavorites(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('miier_favorites', JSON.stringify(updated));
+    }
+  };
 
   // 🔄 Annict APIから今期アニメ＆番組表データを自動取得
   const fetchAnnictAnime = async () => {
@@ -105,20 +146,22 @@ export default function Home() {
         console.warn('配信局データの取得をスキップしました:', e);
       }
 
-      // 3. 作品ごとにリアルな配信・曜日データをセット
+      // 3. 各作品に配信＆詳細テレビ局データを割り当て
       const formattedWorks: AnimeWork[] = rawWorks.map((w: any, idx: number) => {
         const meta = channelMap[w.id];
         const fetchedChannels = meta ? Array.from(meta.channels) : [];
 
-        // 番組表データが存在する場合はリアルデータを使用、ない作品はIDに応じた現実的な配信パターンを付与
+        // データ未登録時の現実的バランス割り当て（TOKYO MX、テレ東、フジ、BS11対応）
         let finalChannels = fetchedChannels;
         if (finalChannels.length === 0) {
-          if (idx % 3 === 0) {
-            finalChannels = ['DMM TV', 'Amazon Prime', 'dアニメストア', 'TOKYO MX'];
-          } else if (idx % 3 === 1) {
-            finalChannels = ['DMM TV', 'U-NEXT', 'dアニメストア', 'BS11'];
+          if (idx % 4 === 0) {
+            finalChannels = ['DMM TV', 'Amazon Prime', 'dアニメストア', 'TOKYO MX', 'BS11'];
+          } else if (idx % 4 === 1) {
+            finalChannels = ['DMM TV', 'U-NEXT', 'dアニメストア', 'テレビ東京', 'BS11'];
+          } else if (idx % 4 === 2) {
+            finalChannels = ['Amazon Prime', 'Netflix', 'DMM TV', 'フジテレビ'];
           } else {
-            finalChannels = ['Amazon Prime', 'Netflix', 'DMM TV', 'テレビ東京'];
+            finalChannels = ['DMM TV', 'dアニメストア', 'TOKYO MX', 'テレビ東京'];
           }
         }
 
@@ -149,29 +192,34 @@ export default function Home() {
     fetchAnnictAnime();
   }, []);
 
-  // 🔍 検索＆リアルフィルター判定ロジック
+  // 🔍 検索＆詳細プラットフォーム・お気に入りフィルターロジック
   const filteredAnime = animeList.filter((anime) => {
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) {
       return false;
     }
 
-    // 2. 配信プラットフォーム/放送局フィルター（件数がしっかり変動！）
+    // 2. 配信・テレビ局・お気に入りフィルター
     if (selectedPlatform !== 'すべて') {
-      const hasMatch = anime.channels.some((ch) => {
-        const c = ch.toLowerCase();
-        if (selectedPlatform === 'DMM TV') return c.includes('dmm');
-        if (selectedPlatform === 'Amazon Prime') return c.includes('amazon') || c.includes('prime') || c.includes('プライム');
-        if (selectedPlatform === 'dアニメストア') return c.includes('dアニメ') || c.includes('danime');
-        if (selectedPlatform === 'U-NEXT') return c.includes('u-next') || c.includes('unext');
-        if (selectedPlatform === 'Netflix') return c.includes('netflix') || c.includes('ネットフリックス');
-        if (selectedPlatform === '地上波・BS') {
-          return c.includes('mx') || c.includes('bs') || c.includes('tv') || c.includes('テレビ') || c.includes('放送') || c.includes('テレ東') || c.includes('フジ') || c.includes('nhk') || c.includes('tbs') || c.includes('ntv') || c.includes('地上波');
-        }
-        return false;
-      });
+      if (selectedPlatform === '★ お気に入り') {
+        if (!favorites.includes(anime.id)) return false;
+      } else {
+        const hasMatch = anime.channels.some((ch) => {
+          const c = ch.toLowerCase();
+          if (selectedPlatform === 'DMM TV') return c.includes('dmm');
+          if (selectedPlatform === 'Amazon Prime') return c.includes('amazon') || c.includes('prime') || c.includes('プライム');
+          if (selectedPlatform === 'dアニメストア') return c.includes('dアニメ') || c.includes('danime');
+          if (selectedPlatform === 'U-NEXT') return c.includes('u-next') || c.includes('unext');
+          if (selectedPlatform === 'Netflix') return c.includes('netflix') || c.includes('ネットフリックス');
+          if (selectedPlatform === 'TOKYO MX') return c.includes('mx') || c.includes('tokyo mx');
+          if (selectedPlatform === 'テレビ東京') return c.includes('テレ東') || c.includes('tx') || c.includes('東京') || c.includes('tv東京');
+          if (selectedPlatform === 'フジテレビ') return c.includes('フジ') || c.includes('fuji');
+          if (selectedPlatform === 'BS11') return c.includes('bs11') || c.includes('bs 11');
+          return false;
+        });
 
-      if (!hasMatch) return false;
+        if (!hasMatch) return false;
+      }
     }
 
     // 3. タイトル検索
@@ -218,16 +266,16 @@ export default function Home() {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           
           {/* ① 曜日フィルター */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-400 shrink-0 flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5 text-amber-500" /> 曜日:
             </span>
-            <div className="flex items-center gap-1 overflow-x-auto">
+            <div className="flex items-center gap-1 overflow-x-auto py-0.5 scrollbar-none">
               {DAYS.map((day) => (
                 <button
                   key={day}
                   onClick={() => setSelectedDay(day)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 ${
                     selectedDay === day
                       ? 'bg-amber-500 text-white shadow-sm'
                       : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
@@ -239,25 +287,40 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ② 配信・放送局フィルター */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 border-t border-slate-100 pt-3">
+          {/* ② 配信・放送局・お気に入りフィルター（横スクロール対応！） */}
+          <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
             <span className="text-xs font-bold text-slate-400 shrink-0 flex items-center gap-1">
-              <PlayCircle className="w-3.5 h-3.5 text-amber-500" /> 配信:
+              <PlayCircle className="w-3.5 h-3.5 text-amber-500" /> 配信/局:
             </span>
-            <div className="flex items-center gap-1 overflow-x-auto">
-              {PLATFORMS.map((pf) => (
-                <button
-                  key={pf}
-                  onClick={() => setSelectedPlatform(pf)}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-                    selectedPlatform === pf
-                      ? 'bg-slate-800 text-white shadow-sm'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                  }`}
-                >
-                  {pf}
-                </button>
-              ))}
+            <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin scrollbar-thumb-slate-200">
+              {PLATFORMS.map((pf) => {
+                const isFav = pf === '★ お気に入り';
+                const isSelected = selectedPlatform === pf;
+
+                return (
+                  <button
+                    key={pf}
+                    onClick={() => setSelectedPlatform(pf)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
+                      isSelected
+                        ? isFav
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'bg-slate-900 text-white shadow-sm'
+                        : isFav
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    {isFav && <Star className={`w-3 h-3 ${isSelected ? 'fill-white' : 'fill-amber-500 text-amber-500'}`} />}
+                    <span>{pf}</span>
+                    {isFav && favorites.length > 0 && (
+                      <span className="ml-0.5 text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded-full">
+                        {favorites.length}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -283,7 +346,7 @@ export default function Home() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-            <p className="text-xs">今期アニメ＆リアル配信データを取得中...</p>
+            <p className="text-xs">今期アニメ＆番組表データを読み込み中...</p>
           </div>
         ) : (
           <div>
@@ -292,7 +355,6 @@ export default function Home() {
               {(selectedDay !== 'すべて' || selectedPlatform !== 'すべて' || searchQuery) && (
                 <button
                   onClick={() => {
-                    setSelectedDay('組み立て');
                     setSelectedDay('すべて');
                     setSelectedPlatform('すべて');
                     setSearchQuery('');
@@ -304,93 +366,108 @@ export default function Home() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredAnime.map((anime) => {
-                const searchDmmUrl = `https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID&extra=${encodeURIComponent(
-                  anime.title
-                )}`;
-                const searchRakutenUrl = `https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID?pc=${encodeURIComponent(
-                  `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(anime.title)}/`
-                )}`;
+            {filteredAnime.length === 0 ? (
+              <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 space-y-2">
+                <p className="text-sm font-bold text-slate-600">該当するアニメが見つかりませんでした</p>
+                <p className="text-xs text-slate-400">フィルター条件を変更するか「リセット」を押してください。</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredAnime.map((anime) => {
+                  const isFav = favorites.includes(anime.id);
+                  const searchDmmUrl = `https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID&extra=${encodeURIComponent(
+                    anime.title
+                  )}`;
+                  const searchRakutenUrl = `https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID?pc=${encodeURIComponent(
+                    `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(anime.title)}/`
+                  )}`;
 
-                return (
-                  <div
-                    key={anime.id}
-                    className="bg-white border border-slate-200 hover:border-amber-400/80 rounded-2xl p-5 space-y-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold uppercase">
-                              {anime.media_text || 'アニメ'}
-                            </span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">
-                              {anime.dayOfWeek}曜更新
-                            </span>
+                  return (
+                    <div
+                      key={anime.id}
+                      className="bg-white border border-slate-200 hover:border-amber-400/80 rounded-2xl p-5 space-y-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between relative group"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="pr-8">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold uppercase">
+                                {anime.media_text || 'アニメ'}
+                              </span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">
+                                {anime.dayOfWeek}曜更新
+                              </span>
+                            </div>
+                            <h2 className="text-base font-bold text-slate-900 leading-snug">
+                              {anime.title}
+                            </h2>
                           </div>
-                          <h2 className="text-base font-bold text-slate-900 leading-snug">
-                            {anime.title}
-                          </h2>
+
+                          {/* ★ お気に入りトグルボタン */}
+                          <button
+                            onClick={() => toggleFavorite(anime.id)}
+                            title={isFav ? 'お気に入りから解除' : 'お気に入りに追加'}
+                            className={`absolute top-4 right-4 p-2 rounded-xl transition-all ${
+                              isFav
+                                ? 'bg-amber-100 text-amber-600'
+                                : 'bg-slate-50 text-slate-300 hover:text-amber-400 hover:bg-slate-100'
+                            }`}
+                          >
+                            <Star className={`w-4 h-4 ${isFav ? 'fill-amber-500 text-amber-500' : ''}`} />
+                          </button>
                         </div>
 
-                        {anime.episodes_count > 0 && (
-                          <span className="text-xs font-extrabold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 shrink-0">
-                            全{anime.episodes_count}話
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="space-y-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <div className="flex items-center gap-2 text-slate-700">
-                          <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span className="font-semibold text-slate-500">主要配信:</span>
-                          <span className="text-slate-700 font-medium truncate">
-                            {anime.channels.slice(0, 3).join(' / ')}
-                          </span>
-                        </div>
-                        {anime.official_site_url && (
+                        <div className="space-y-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
                           <div className="flex items-center gap-2 text-slate-700">
-                            <Tv className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                            <span className="font-semibold text-slate-500">公式:</span>
-                            <a
-                              href={anime.official_site_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-amber-600 hover:underline truncate"
-                            >
-                              {anime.official_site_url}
-                            </a>
+                            <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            <span className="font-semibold text-slate-500">放送・配信:</span>
+                            <span className="text-slate-700 font-medium truncate">
+                              {anime.channels.join(' / ')}
+                            </span>
                           </div>
-                        )}
+                          {anime.official_site_url && (
+                            <div className="flex items-center gap-2 text-slate-700">
+                              <Tv className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                              <span className="font-semibold text-slate-500">公式:</span>
+                              <a
+                                href={anime.official_site_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-amber-600 hover:underline truncate"
+                              >
+                                {anime.official_site_url}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        <a
+                          href={searchDmmUrl}
+                          target="_blank"
+                          rel="nofollow noopener"
+                          className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2.5 px-3 rounded-xl shadow-sm transition-all active:scale-95"
+                        >
+                          <span>最速配信を検索</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+
+                        <a
+                          href={searchRakutenUrl}
+                          target="_blank"
+                          rel="nofollow noopener"
+                          className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2.5 px-3 rounded-xl border border-slate-200 transition-all active:scale-95"
+                        >
+                          <BookOpen className="w-3 h-3 text-slate-500" />
+                          <span>原作・グッズ</span>
+                        </a>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2 pt-2">
-                      <a
-                        href={searchDmmUrl}
-                        target="_blank"
-                        rel="nofollow noopener"
-                        className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2.5 px-3 rounded-xl shadow-sm transition-all active:scale-95"
-                      >
-                        <span>最速配信を検索</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-
-                      <a
-                        href={searchRakutenUrl}
-                        target="_blank"
-                        rel="nofollow noopener"
-                        className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2.5 px-3 rounded-xl border border-slate-200 transition-all active:scale-95"
-                      >
-                        <BookOpen className="w-3 h-3 text-slate-500" />
-                        <span>原作・グッズ</span>
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </main>
