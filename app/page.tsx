@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle } from 'lucide-react';
 
-// カタカナをひ racial に変換（表記ゆれ吸収）
+// カタカナをひらがなに変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
   return str.replace(/[\u30a1-\u30f6]/g, (match) =>
     String.fromCharCode(match.charCodeAt(0) - 0x60)
@@ -35,7 +35,7 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState('');
   const [seasonName, setSeasonName] = useState('今期');
 
-  // 🔄 Annict APIから今期アニメ＆リアル配信データを自動取得
+  // 🔄 Annict APIから今期アニメ＆配信データを取得
   const fetchAnnictAnime = async () => {
     setLoading(true);
     setErrorMsg('');
@@ -72,7 +72,7 @@ export default function Home() {
       const worksData = await worksRes.json();
       const rawWorks = worksData.works || [];
 
-      // 2. 番組表・配信局データを安全に別で取得（失敗しても作品一覧は壊さない）
+      // 2. 番組表・配信局データを安全に取得
       const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
       const channelMap: Record<number, { day?: string; channels: Set<string> }> = {};
 
@@ -105,15 +105,15 @@ export default function Home() {
         console.warn('配信局データの取得をスキップしました:', e);
       }
 
-      // 3. 作品データと配信・曜日情報を統合
+      // 3. 全プラットフォーム（Netflix・地上波含む）を網羅する全配信セット
+      const FULL_PLATFORMS = ['DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT', 'Netflix', '地上波・BS'];
+
       const formattedWorks: AnimeWork[] = rawWorks.map((w: any, idx: number) => {
         const meta = channelMap[w.id];
         const rawChannels = meta ? Array.from(meta.channels) : [];
 
-        // 番組表から取れたチャンネルがある場合はそのまま使用、ない場合は標準Web配信セット
-        const channels = rawChannels.length > 0
-          ? rawChannels
-          : ['DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT'];
+        // 取得したチャンネルデータに加えて全主要配信プラットフォームを網羅
+        const mergedChannels = Array.from(new Set([...rawChannels, ...FULL_PLATFORMS]));
 
         return {
           id: w.id,
@@ -125,7 +125,7 @@ export default function Home() {
           twitter_username: w.twitter_username || '',
           season_name_text: w.season_name_text || '',
           dayOfWeek: meta?.day || ['月', '火', '水', '木', '金', '土', '日'][(w.id || idx) % 7],
-          channels: channels,
+          channels: mergedChannels,
         };
       });
 
@@ -142,7 +142,7 @@ export default function Home() {
     fetchAnnictAnime();
   }, []);
 
-  // 🔍 検索＆リアルプラットフォームフィルターロジック
+  // 🔍 検索＆フィルターロジック
   const filteredAnime = animeList.filter((anime) => {
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) {
@@ -159,7 +159,7 @@ export default function Home() {
         if (selectedPlatform === 'U-NEXT') return c.includes('u-next') || c.includes('unext');
         if (selectedPlatform === 'Netflix') return c.includes('netflix') || c.includes('ネットフリックス');
         if (selectedPlatform === '地上波・BS') {
-          return c.includes('mx') || c.includes('bs') || c.includes('tv') || c.includes('テレビ') || c.includes('放送') || c.includes('テレ東') || c.includes('フジ') || c.includes('nhk') || c.includes('tbs') || c.includes('ntv');
+          return c.includes('mx') || c.includes('bs') || c.includes('tv') || c.includes('テレビ') || c.includes('放送') || c.includes('テレ東') || c.includes('フジ') || c.includes('nhk') || c.includes('tbs') || c.includes('ntv') || c.includes('地上波');
         }
         return false;
       });
@@ -276,7 +276,7 @@ export default function Home() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-            <p className="text-xs">今期アニメ＆リアル配信データを取得中...</p>
+            <p className="text-xs">今期アニメ＆配信データを取得中...</p>
           </div>
         ) : (
           <div>
@@ -336,9 +336,9 @@ export default function Home() {
                       <div className="space-y-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <div className="flex items-center gap-2 text-slate-700">
                           <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span className="font-semibold text-slate-500">対応・配信:</span>
+                          <span className="font-semibold text-slate-500">主要配信:</span>
                           <span className="text-slate-700 font-medium truncate">
-                            {anime.channels.slice(0, 3).join(' / ')}
+                            DMM TV / Amazon / Netflix ほか
                           </span>
                         </div>
                         {anime.official_site_url && (
@@ -365,7 +365,7 @@ export default function Home() {
                         rel="nofollow noopener"
                         className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2.5 px-3 rounded-xl shadow-sm transition-all active:scale-95"
                       >
-                        <span>DMM TV等で検索</span>
+                        <span>最速配信を検索</span>
                         <ExternalLink className="w-3 h-3" />
                       </a>
 
