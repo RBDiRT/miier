@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle, Star, Sparkles } from 'lucide-react';
+import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle, Star, Mic } from 'lucide-react';
 
 // カタカナをひらがなに変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
@@ -38,9 +38,9 @@ const PLATFORMS = [
 ];
 
 export default function Home() {
-  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [selectedDay, setSelectedDay] = useState('すべて');
   const [selectedPlatform, setSelectedPlatform] = useState('すべて');
+  const [selectedFavType, setSelectedFavType] = useState('すべて'); // 'すべて' | '作品' | '声優'
   const [searchQuery, setSearchQuery] = useState('');
   const [animeList, setAnimeList] = useState<AnimeWork[]>([]);
   const [favorites, setFavorites] = useState<number[]>([]);
@@ -191,19 +191,14 @@ export default function Home() {
     fetchAnnictAnime();
   }, []);
 
-  // 🔍 検索＆フィルターロジック
+  // 🔍 検索＆3列フィルター判定ロジック
   const filteredAnime = animeList.filter((anime) => {
-    // 0. ★お気に入り専用モード
-    if (showOnlyFavorites && !favorites.includes(anime.id)) {
-      return false;
-    }
-
-    // 1. 曜日フィルター
+    // 1列目：曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) {
       return false;
     }
 
-    // 2. 配信・テレビ局フィルター
+    // 2列目：配信・テレビ局フィルター
     if (selectedPlatform !== 'すべて') {
       const hasMatch = anime.channels.some((ch) => {
         const c = ch.toLowerCase();
@@ -222,7 +217,15 @@ export default function Home() {
       if (!hasMatch) return false;
     }
 
-    // 3. タイトル検索
+    // 3列目：お気に入りフィルター（作品 / 声優）
+    if (selectedFavType === '作品') {
+      if (!favorites.includes(anime.id)) return false;
+    } else if (selectedFavType === '声優') {
+      // ※将来の声優検索用に枠を準備（現状はサンプルで作品お気に入りと連動）
+      if (!favorites.includes(anime.id)) return false;
+    }
+
+    // タイトル検索
     const rawQuery = searchQuery.trim().toLowerCase();
     if (!rawQuery) return true;
 
@@ -262,47 +265,13 @@ export default function Home() {
 
       {/* 2. メインエリア */}
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-5">
-        {/* 絞り込みコントロールパネル */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        {/* 絞り込みコントロールパネル（美しい3列構造！） */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
           
-          {/* 🌟 独立枠: 表示モード切り替えタブ（すべての作品 / ★ お気に入り） */}
-          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl">
-            <button
-              onClick={() => setShowOnlyFavorites(false)}
-              className={`flex-1 py-2 px-3 text-xs font-extrabold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                !showOnlyFavorites
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>すべての作品</span>
-            </button>
-
-            <button
-              onClick={() => setShowOnlyFavorites(true)}
-              className={`flex-1 py-2 px-3 text-xs font-extrabold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                showOnlyFavorites
-                  ? 'bg-amber-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-amber-600'
-              }`}
-            >
-              <Star className={`w-3.5 h-3.5 ${showOnlyFavorites ? 'fill-white' : 'fill-amber-500 text-amber-500'}`} />
-              <span>お気に入り</span>
-              {favorites.length > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  showOnlyFavorites ? 'bg-white text-amber-700' : 'bg-amber-100 text-amber-800'
-                }`}>
-                  {favorites.length}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* ① 曜日フィルター */}
+          {/* 【1列目】 曜日フィルター */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400 shrink-0 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-amber-500" /> 曜日:
+            <span className="text-xs font-bold text-slate-400 shrink-0 w-16 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-amber-500" /> 曜日
             </span>
             <div className="flex items-center gap-1 overflow-x-auto py-0.5 scrollbar-none">
               {DAYS.map((day) => (
@@ -321,12 +290,12 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ② 配信・放送局フィルター */}
+          {/* 【2列目】 配信・放送局フィルター */}
           <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
-            <span className="text-xs font-bold text-slate-400 shrink-0 flex items-center gap-1">
-              <PlayCircle className="w-3.5 h-3.5 text-amber-500" /> 配信/局:
+            <span className="text-xs font-bold text-slate-400 shrink-0 w-16 flex items-center gap-1">
+              <PlayCircle className="w-3.5 h-3.5 text-amber-500" /> 配信/局
             </span>
-            <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin scrollbar-thumb-slate-200">
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 scrollbar-thin scrollbar-thumb-slate-200">
               {PLATFORMS.map((pf) => (
                 <button
                   key={pf}
@@ -343,7 +312,60 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ③ 検索バー */}
+          {/* 【3列目】 お気に入りフィルター（番組お気に入り / 声優お気に入り） */}
+          <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
+            <span className="text-xs font-bold text-slate-400 shrink-0 w-16 flex items-center gap-1">
+              <Star className="w-3.5 h-3.5 text-amber-500" /> お気に入り
+            </span>
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+              <button
+                onClick={() => setSelectedFavType('すべて')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                  selectedFavType === 'すべて'
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                指定なし
+              </button>
+
+              <button
+                onClick={() => setSelectedFavType('作品')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
+                  selectedFavType === '作品'
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                <Tv className="w-3 h-3" />
+                <span>★ 作品お気に入り</span>
+                {favorites.length > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    selectedFavType === '作品' ? 'bg-white text-amber-800' : 'bg-amber-200 text-amber-900'
+                  }`}>
+                    {favorites.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setSelectedFavType('声優')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
+                  selectedFavType === '声優'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
+                }`}
+              >
+                <Mic className="w-3 h-3" />
+                <span>🎙️ 声優お気に入り</span>
+                <span className="text-[9px] bg-purple-200 text-purple-900 px-1 py-0.2 rounded-md">
+                  開発中
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* 検索バー */}
           <div className="relative w-full pt-1">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -371,15 +393,15 @@ export default function Home() {
           <div>
             <div className="mb-3 text-xs text-slate-500 font-medium flex items-center justify-between">
               <span>
-                {showOnlyFavorites ? '★ お気に入りアニメ: ' : '該当アニメ: '}
+                {selectedFavType !== 'すべて' ? `★ ${selectedFavType}お気に入り: ` : '該当アニメ: '}
                 <strong className="text-amber-600 font-bold">{filteredAnime.length}</strong> 件
               </span>
-              {(selectedDay !== 'すべて' || selectedPlatform !== 'すべて' || searchQuery || showOnlyFavorites) && (
+              {(selectedDay !== 'すべて' || selectedPlatform !== 'すべて' || selectedFavType !== 'すべて' || searchQuery) && (
                 <button
                   onClick={() => {
-                    setShowOnlyFavorites(false);
                     setSelectedDay('すべて');
                     setSelectedPlatform('すべて');
+                    setSelectedFavType('すべて');
                     setSearchQuery('');
                   }}
                   className="text-amber-600 hover:underline text-[11px]"
@@ -392,10 +414,10 @@ export default function Home() {
             {filteredAnime.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 space-y-2">
                 <p className="text-sm font-bold text-slate-600">
-                  {showOnlyFavorites ? 'お気に入りに登録されたアニメがありません' : '該当するアニメが見つかりませんでした'}
+                  {selectedFavType !== 'すべて' ? 'お気に入りに登録されたアニメがありません' : '該当するアニメが見つかりませんでした'}
                 </p>
                 <p className="text-xs text-slate-400">
-                  {showOnlyFavorites ? 'アニメカード右上の「★」を押してお気に入りに追加してみよう！' : 'フィルター条件を変更するか「リセット」を押してください。'}
+                  {selectedFavType !== 'すべて' ? 'アニメカード右上の「★」を押してお気に入りに追加してみよう！' : 'フィルター条件を変更するか「リセット」を押してください。'}
                 </p>
               </div>
             ) : (
