@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle, Star } from 'lucide-react';
+import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle, Star, Sparkles } from 'lucide-react';
 
 // カタカナをひらがなに変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
@@ -26,7 +26,6 @@ interface AnimeWork {
 const DAYS = ['すべて', '月', '火', '水', '木', '金', '土', '日'];
 const PLATFORMS = [
   'すべて',
-  '★ お気に入り',
   'DMM TV',
   'Amazon Prime',
   'dアニメストア',
@@ -39,6 +38,7 @@ const PLATFORMS = [
 ];
 
 export default function Home() {
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [selectedDay, setSelectedDay] = useState('すべて');
   const [selectedPlatform, setSelectedPlatform] = useState('すべて');
   const [searchQuery, setSearchQuery] = useState('');
@@ -151,7 +151,6 @@ export default function Home() {
         const meta = channelMap[w.id];
         const fetchedChannels = meta ? Array.from(meta.channels) : [];
 
-        // データ未登録時の現実的バランス割り当て（TOKYO MX、テレ東、フジ、BS11対応）
         let finalChannels = fetchedChannels;
         if (finalChannels.length === 0) {
           if (idx % 4 === 0) {
@@ -192,34 +191,35 @@ export default function Home() {
     fetchAnnictAnime();
   }, []);
 
-  // 🔍 検索＆詳細プラットフォーム・お気に入りフィルターロジック
+  // 🔍 検索＆フィルターロジック
   const filteredAnime = animeList.filter((anime) => {
+    // 0. ★お気に入り専用モード
+    if (showOnlyFavorites && !favorites.includes(anime.id)) {
+      return false;
+    }
+
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) {
       return false;
     }
 
-    // 2. 配信・テレビ局・お気に入りフィルター
+    // 2. 配信・テレビ局フィルター
     if (selectedPlatform !== 'すべて') {
-      if (selectedPlatform === '★ お気に入り') {
-        if (!favorites.includes(anime.id)) return false;
-      } else {
-        const hasMatch = anime.channels.some((ch) => {
-          const c = ch.toLowerCase();
-          if (selectedPlatform === 'DMM TV') return c.includes('dmm');
-          if (selectedPlatform === 'Amazon Prime') return c.includes('amazon') || c.includes('prime') || c.includes('プライム');
-          if (selectedPlatform === 'dアニメストア') return c.includes('dアニメ') || c.includes('danime');
-          if (selectedPlatform === 'U-NEXT') return c.includes('u-next') || c.includes('unext');
-          if (selectedPlatform === 'Netflix') return c.includes('netflix') || c.includes('ネットフリックス');
-          if (selectedPlatform === 'TOKYO MX') return c.includes('mx') || c.includes('tokyo mx');
-          if (selectedPlatform === 'テレビ東京') return c.includes('テレ東') || c.includes('tx') || c.includes('東京') || c.includes('tv東京');
-          if (selectedPlatform === 'フジテレビ') return c.includes('フジ') || c.includes('fuji');
-          if (selectedPlatform === 'BS11') return c.includes('bs11') || c.includes('bs 11');
-          return false;
-        });
+      const hasMatch = anime.channels.some((ch) => {
+        const c = ch.toLowerCase();
+        if (selectedPlatform === 'DMM TV') return c.includes('dmm');
+        if (selectedPlatform === 'Amazon Prime') return c.includes('amazon') || c.includes('prime') || c.includes('プライム');
+        if (selectedPlatform === 'dアニメストア') return c.includes('dアニメ') || c.includes('danime');
+        if (selectedPlatform === 'U-NEXT') return c.includes('u-next') || c.includes('unext');
+        if (selectedPlatform === 'Netflix') return c.includes('netflix') || c.includes('ネットフリックス');
+        if (selectedPlatform === 'TOKYO MX') return c.includes('mx') || c.includes('tokyo mx');
+        if (selectedPlatform === 'テレビ東京') return c.includes('テレ東') || c.includes('tx') || c.includes('東京') || c.includes('tv東京');
+        if (selectedPlatform === 'フジテレビ') return c.includes('フジ') || c.includes('fuji');
+        if (selectedPlatform === 'BS11') return c.includes('bs11') || c.includes('bs 11');
+        return false;
+      });
 
-        if (!hasMatch) return false;
-      }
+      if (!hasMatch) return false;
     }
 
     // 3. タイトル検索
@@ -265,6 +265,40 @@ export default function Home() {
         {/* 絞り込みコントロールパネル */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           
+          {/* 🌟 独立枠: 表示モード切り替えタブ（すべての作品 / ★ お気に入り） */}
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl">
+            <button
+              onClick={() => setShowOnlyFavorites(false)}
+              className={`flex-1 py-2 px-3 text-xs font-extrabold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                !showOnlyFavorites
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>すべての作品</span>
+            </button>
+
+            <button
+              onClick={() => setShowOnlyFavorites(true)}
+              className={`flex-1 py-2 px-3 text-xs font-extrabold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                showOnlyFavorites
+                  ? 'bg-amber-500 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-amber-600'
+              }`}
+            >
+              <Star className={`w-3.5 h-3.5 ${showOnlyFavorites ? 'fill-white' : 'fill-amber-500 text-amber-500'}`} />
+              <span>お気に入り</span>
+              {favorites.length > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  showOnlyFavorites ? 'bg-white text-amber-700' : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {favorites.length}
+                </span>
+              )}
+            </button>
+          </div>
+
           {/* ① 曜日フィルター */}
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-400 shrink-0 flex items-center gap-1">
@@ -287,40 +321,25 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ② 配信・放送局・お気に入りフィルター（横スクロール対応！） */}
+          {/* ② 配信・放送局フィルター */}
           <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
             <span className="text-xs font-bold text-slate-400 shrink-0 flex items-center gap-1">
               <PlayCircle className="w-3.5 h-3.5 text-amber-500" /> 配信/局:
             </span>
             <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin scrollbar-thumb-slate-200">
-              {PLATFORMS.map((pf) => {
-                const isFav = pf === '★ お気に入り';
-                const isSelected = selectedPlatform === pf;
-
-                return (
-                  <button
-                    key={pf}
-                    onClick={() => setSelectedPlatform(pf)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
-                      isSelected
-                        ? isFav
-                          ? 'bg-amber-500 text-white shadow-sm'
-                          : 'bg-slate-900 text-white shadow-sm'
-                        : isFav
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    }`}
-                  >
-                    {isFav && <Star className={`w-3 h-3 ${isSelected ? 'fill-white' : 'fill-amber-500 text-amber-500'}`} />}
-                    <span>{pf}</span>
-                    {isFav && favorites.length > 0 && (
-                      <span className="ml-0.5 text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded-full">
-                        {favorites.length}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              {PLATFORMS.map((pf) => (
+                <button
+                  key={pf}
+                  onClick={() => setSelectedPlatform(pf)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                    selectedPlatform === pf
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  {pf}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -351,10 +370,14 @@ export default function Home() {
         ) : (
           <div>
             <div className="mb-3 text-xs text-slate-500 font-medium flex items-center justify-between">
-              <span>該当アニメ: <strong className="text-amber-600 font-bold">{filteredAnime.length}</strong> 件</span>
-              {(selectedDay !== 'すべて' || selectedPlatform !== 'すべて' || searchQuery) && (
+              <span>
+                {showOnlyFavorites ? '★ お気に入りアニメ: ' : '該当アニメ: '}
+                <strong className="text-amber-600 font-bold">{filteredAnime.length}</strong> 件
+              </span>
+              {(selectedDay !== 'すべて' || selectedPlatform !== 'すべて' || searchQuery || showOnlyFavorites) && (
                 <button
                   onClick={() => {
+                    setShowOnlyFavorites(false);
                     setSelectedDay('すべて');
                     setSelectedPlatform('すべて');
                     setSearchQuery('');
@@ -368,8 +391,12 @@ export default function Home() {
 
             {filteredAnime.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 space-y-2">
-                <p className="text-sm font-bold text-slate-600">該当するアニメが見つかりませんでした</p>
-                <p className="text-xs text-slate-400">フィルター条件を変更するか「リセット」を押してください。</p>
+                <p className="text-sm font-bold text-slate-600">
+                  {showOnlyFavorites ? 'お気に入りに登録されたアニメがありません' : '該当するアニメが見つかりませんでした'}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {showOnlyFavorites ? 'アニメカード右上の「★」を押してお気に入りに追加してみよう！' : 'フィルター条件を変更するか「リセット」を押してください。'}
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
