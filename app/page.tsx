@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle, Star, Mic, X, Info, Music, Users, Sparkles } from 'lucide-react';
+import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle, Star, Mic, X, Info, Music, Users, Sparkles, Building, Plus } from 'lucide-react';
 
 // カタカナをひらがなに変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
@@ -24,6 +24,7 @@ interface AnimeWork {
   channels: string[];
   image_url?: string;
   casts?: string[];
+  studio?: string;
 }
 
 // キャスト・声優情報の型定義
@@ -61,11 +62,21 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState('');
   const [seasonName, setSeasonName] = useState('今期');
 
-  // モーダル＆キャスト用ステート
+  // モーダル＆キャスト＆制作会社用ステート
   const [selectedAnime, setSelectedAnime] = useState<AnimeWork | null>(null);
   const [activeModalPlatform, setActiveModalPlatform] = useState<string>('');
   const [casts, setCasts] = useState<CastInfo[]>([]);
   const [loadingCasts, setLoadingCasts] = useState(false);
+  const [studioName, setStudioName] = useState<string>('');
+
+  // 🌟 新機能：過去作・ゲーム検索モーダル用ステート
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [workSearchQuery, setWorkSearchQuery] = useState('');
+  const [workSearchResults, setWorkSearchResults] = useState<AnimeWork[]>([]);
+  const [searchingWorks, setSearchingWorks] = useState(false);
+  const [selectedSearchWork, setSelectedSearchWork] = useState<AnimeWork | null>(null);
+  const [searchWorkCasts, setSearchWorkCasts] = useState<CastInfo[]>([]);
+  const [loadingSearchCasts, setLoadingSearchCasts] = useState(false);
 
   // お気に入りデータの読み込み（作品＆推し声優）
   useEffect(() => {
@@ -96,34 +107,6 @@ export default function Home() {
     }
   };
 
-  // 🌟 この作品のキャストを全員まとめて一括推し登録 / 解除する関数
-  const toggleAllCastsForAnime = () => {
-    if (casts.length === 0) return;
-    const currentCastNames = casts
-      .map((c) => c.cast_name)
-      .filter((name) => name && name !== '未登録');
-
-    if (currentCastNames.length === 0) return;
-
-    // 全員すでに登録済みかチェック
-    const isAllFav = currentCastNames.every((name) => favCasts.includes(name));
-
-    let updated: string[];
-    if (isAllFav) {
-      // 全員解除
-      updated = favCasts.filter((name) => !currentCastNames.includes(name));
-    } else {
-      // 未登録の人を全員追加
-      const newNames = currentCastNames.filter((name) => !favCasts.includes(name));
-      updated = [...favCasts, ...newNames];
-    }
-
-    setFavCasts(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
-    }
-  };
-
   // 声優お気に入りの切り替え
   const toggleFavCast = (castName: string) => {
     let updated: string[];
@@ -138,15 +121,42 @@ export default function Home() {
     }
   };
 
-  // モーダルを開く ＆ 声優データを個別取得
+  // 🌟 この作品のキャストを全員まとめて一括推し登録 / 解除する関数
+  const toggleAllCastsForAnime = () => {
+    if (casts.length === 0) return;
+    const currentCastNames = casts
+      .map((c) => c.cast_name)
+      .filter((name) => name && name !== '未登録');
+
+    if (currentCastNames.length === 0) return;
+
+    const isAllFav = currentCastNames.every((name) => favCasts.includes(name));
+
+    let updated: string[];
+    if (isAllFav) {
+      updated = favCasts.filter((name) => !currentCastNames.includes(name));
+    } else {
+      const newNames = currentCastNames.filter((name) => !favCasts.includes(name));
+      updated = [...favCasts, ...newNames];
+    }
+
+    setFavCasts(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
+    }
+  };
+
+  // モーダルを開く ＆ 声優データ ＆ 制作会社データを自動取得
   const openModal = async (anime: AnimeWork) => {
     setSelectedAnime(anime);
     setActiveModalPlatform(anime.channels[0] || 'DMM TV');
     setCasts([]);
+    setStudioName('');
     setLoadingCasts(true);
 
     const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
     if (token) {
+      // 1. 声優データ取得
       try {
         const res = await fetch(
           `https://api.annict.com/v1/casts?filter_work_id=${anime.id}&sort_id=asc&per_page=20`,
@@ -162,6 +172,25 @@ export default function Home() {
         }
       } catch (e) {
         console.warn('キャスト情報の取得に失敗しました:', e);
+      }
+
+      // 2. 制作会社（アニメーション制作）データ取得
+      try {
+        const staffRes = await fetch(
+          `https://api.annict.com/v1/staffs?filter_work_id=${anime.id}&per_page=30`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (staffRes.ok) {
+          const staffData = await staffRes.json();
+          const animationStudio = (staffData.staffs || []).find(
+            (s: any) => s.role_text?.includes('アニメーション制作') || s.role_text?.includes('制作')
+          );
+          if (animationStudio) {
+            setStudioName(animationStudio.organization?.name || animationStudio.name || '');
+          }
+        }
+      } catch (e) {
+        console.warn('制作会社情報の取得に失敗しました:', e);
       }
     }
     setLoadingCasts(false);
@@ -194,7 +223,6 @@ export default function Home() {
     }
 
     try {
-      // 1. 今期アニメ一覧を取得
       const worksRes = await fetch(
         `https://api.annict.com/v1/works?filter_season=${seasonCode}&sort_watchers_count=desc&per_page=50`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -204,7 +232,6 @@ export default function Home() {
       const worksData = await worksRes.json();
       const rawWorks = worksData.works || [];
 
-      // 2. 番組表データを取得
       const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
       const channelMap: Record<number, { day?: string; channels: Set<string> }> = {};
 
@@ -237,31 +264,32 @@ export default function Home() {
         console.warn('配信局データの取得をスキップしました:', e);
       }
 
-      // 3. レート制限を回避しながら作品ごとにキャストを取得
+      // キャストデータを小分け取得
       const castMap: Record<number, string[]> = {};
-      
-      // 5作品ずつ安全にシーケンシャル取得
-      for (const w of rawWorks) {
-        try {
-          const castRes = await fetch(
-            `https://api.annict.com/v1/casts?filter_work_id=${w.id}&per_page=20`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          if (castRes.ok) {
-            const castData = await castRes.json();
-            const names = (castData.casts || []).map(
-              (c: any) => c.person?.name || c.name || ''
-            ).filter(Boolean);
-            castMap[w.id] = names;
-          }
-        } catch (e) {
-          console.warn(`キャスト取得失敗 (workId: ${w.id}):`, e);
-        }
+      const chunkSize = 10;
+      for (let i = 0; i < rawWorks.length; i += chunkSize) {
+        const batch = rawWorks.slice(i, i + chunkSize);
+        await Promise.all(
+          batch.map(async (w: any) => {
+            try {
+              const castRes = await fetch(
+                `https://api.annict.com/v1/casts?filter_work_id=${w.id}&per_page=20`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (castRes.ok) {
+                const castData = await castRes.json();
+                const names = (castData.casts || []).map(
+                  (c: any) => c.person?.name || c.name || ''
+                ).filter(Boolean);
+                castMap[w.id] = names;
+              }
+            } catch (e) {
+              console.warn(`キャスト取得失敗 (workId: ${w.id}):`, e);
+            }
+          })
+        );
       }
 
-      console.log('【デバッグ】取得完了したキャストマップ:', castMap);
-
-      // 4. データ整形
       const formattedWorks: AnimeWork[] = rawWorks.map((w: any, idx: number) => {
         const meta = channelMap[w.id];
         const fetchedChannels = meta ? Array.from(meta.channels) : [];
@@ -314,14 +342,94 @@ export default function Home() {
     fetchAnnictAnime();
   }, []);
 
+  // 🌟 過去作・ゲームの検索処理
+  const searchPastWorks = async () => {
+    if (!workSearchQuery.trim()) return;
+    setSearchingWorks(true);
+    setSelectedSearchWork(null);
+    setSearchWorkCasts([]);
+
+    const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
+    if (token) {
+      try {
+        const res = await fetch(
+          `https://api.annict.com/v1/works?filter_title=${encodeURIComponent(
+            workSearchQuery.trim()
+          )}&sort_watchers_count=desc&per_page=10`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const fetchedWorks: AnimeWork[] = (data.works || []).map((w: any) => ({
+            id: w.id,
+            title: w.title,
+            title_kana: w.title_kana || '',
+            media_text: w.media_text || 'TV',
+            episodes_count: w.episodes_count || 0,
+            official_site_url: w.official_site_url || '',
+            twitter_username: w.twitter_username || '',
+            season_name_text: w.season_name_text || '',
+            dayOfWeek: '月',
+            channels: [],
+            image_url: w.images?.facebook_ogp_url || w.images?.recommended_url || '',
+          }));
+          setWorkSearchResults(fetchedWorks);
+        }
+      } catch (e) {
+        console.warn('過去作検索エラー:', e);
+      }
+    }
+    setSearchingWorks(false);
+  };
+
+  // 🌟 過去作のキャスト取得
+  const selectSearchWork = async (work: AnimeWork) => {
+    setSelectedSearchWork(work);
+    setSearchWorkCasts([]);
+    setLoadingSearchCasts(true);
+
+    const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
+    if (token) {
+      try {
+        const res = await fetch(
+          `https://api.annict.com/v1/casts?filter_work_id=${work.id}&sort_id=asc&per_page=30`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const fetchedCasts = (data.casts || []).map((c: any) => ({
+            character_name: c.character?.name || '登場人物',
+            cast_name: c.person?.name || c.name || '未登録',
+          }));
+          setSearchWorkCasts(fetchedCasts);
+        }
+      } catch (e) {
+        console.warn('過去作キャスト取得エラー:', e);
+      }
+    }
+    setLoadingSearchCasts(false);
+  };
+
+  // 🌟 過去作のキャストを一括推し登録
+  const registerAllPastWorkCasts = () => {
+    if (searchWorkCasts.length === 0) return;
+    const namesToAdd = searchWorkCasts
+      .map((c) => c.cast_name)
+      .filter((name) => name && name !== '未登録' && !favCasts.includes(name));
+
+    if (namesToAdd.length === 0) return;
+
+    const updated = [...favCasts, ...namesToAdd];
+    setFavCasts(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
+    }
+  };
+
   // 🔍 検索＆フィルター判定ロジック
   const filteredAnime = animeList.filter((anime) => {
-    // 1. 曜日フィルター
-    if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) {
-      return false;
-    }
+    if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
 
-    // 2. 配信/放送局フィルター
     if (selectedPlatform !== 'すべて') {
       const hasMatch = anime.channels.some((ch) => {
         const c = ch.toLowerCase();
@@ -336,31 +444,19 @@ export default function Home() {
         if (selectedPlatform === 'BS11') return c.includes('bs11') || c.includes('bs 11');
         return false;
       });
-
       if (!hasMatch) return false;
     }
 
-    // 3. お気に入りフィルター（作品 / 声優）
     if (selectedFavType === '作品') {
       if (!favorites.includes(anime.id)) return false;
     } else if (selectedFavType === '声優') {
       if (favCasts.length === 0) return false;
-      
-      console.log('【デバッグ】登録中の推し声優:', favCasts);
-      
-      // スペース（全角・半角）を完全に除去して名前を比較！
       const normalize = (str: string) => str.replace(/[\s ]+/g, '').toLowerCase();
       const normalizedFavs = favCasts.map(normalize);
-
-      const hasFavCast = anime.casts?.some((castName) => {
-        const cleanCast = normalize(castName);
-        return normalizedFavs.includes(cleanCast);
-      });
-
-      return hasFavCast;
+      const hasFavCast = anime.casts?.some((castName) => normalizedFavs.includes(normalize(castName)));
+      if (!hasFavCast) return false;
     }
 
-    // 4. 検索キーワードフィルター
     const rawQuery = searchQuery.trim().toLowerCase();
     if (!rawQuery) return true;
 
@@ -448,61 +544,72 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 【3列目】 お気に入りフィルター */}
-          <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
-            <span className="text-xs font-bold text-slate-400 shrink-0 w-16 flex items-center gap-1">
-              <Star className="w-3.5 h-3.5 text-amber-500" /> お気に入り
-            </span>
-            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-              <button
-                onClick={() => setSelectedFavType('すべて')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 ${
-                  selectedFavType === 'すべて'
-                    ? 'bg-slate-800 text-white shadow-sm'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                指定なし
-              </button>
+          {/* 【3列目】 お気に入りフィルター ＆ 🌟過去作・ゲーム一括登録ボタン */}
+          <div className="flex items-center justify-between border-t border-slate-100 pt-3 gap-2 overflow-x-auto">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-400 shrink-0 w-16 flex items-center gap-1">
+                <Star className="w-3.5 h-3.5 text-amber-500" /> お気に入り
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setSelectedFavType('すべて')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                    selectedFavType === 'すべて'
+                      ? 'bg-slate-800 text-white shadow-sm'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  指定なし
+                </button>
 
-              <button
-                onClick={() => setSelectedFavType('作品')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
-                  selectedFavType === '作品'
-                    ? 'bg-amber-500 text-white shadow-sm'
-                    : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-                }`}
-              >
-                <Tv className="w-3 h-3" />
-                <span>★ 作品お気に入り</span>
-                {favorites.length > 0 && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    selectedFavType === '作品' ? 'bg-white text-amber-800' : 'bg-amber-200 text-amber-900'
-                  }`}>
-                    {favorites.length}
-                  </span>
-                )}
-              </button>
+                <button
+                  onClick={() => setSelectedFavType('作品')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
+                    selectedFavType === '作品'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  <Tv className="w-3 h-3" />
+                  <span>★ 作品お気に入り</span>
+                  {favorites.length > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      selectedFavType === '作品' ? 'bg-white text-amber-800' : 'bg-amber-200 text-amber-900'
+                    }`}>
+                      {favorites.length}
+                    </span>
+                  )}
+                </button>
 
-              <button
-                onClick={() => setSelectedFavType('声優')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
-                  selectedFavType === '声優'
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
-                }`}
-              >
-                <Mic className="w-3 h-3" />
-                <span>🎙️ 声優お気に入り</span>
-                {favCasts.length > 0 && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    selectedFavType === '声優' ? 'bg-white text-purple-800' : 'bg-purple-200 text-purple-900'
-                  }`}>
-                    {favCasts.length}人
-                  </span>
-                )}
-              </button>
+                <button
+                  onClick={() => setSelectedFavType('声優')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
+                    selectedFavType === '声優'
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
+                  }`}
+                >
+                  <Mic className="w-3 h-3" />
+                  <span>🎙️ 声優お気に入り</span>
+                  {favCasts.length > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      selectedFavType === '声優' ? 'bg-white text-purple-800' : 'bg-purple-200 text-purple-900'
+                    }`}>
+                      {favCasts.length}人
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
+
+            {/* 🌟 画面右側の余白に「過去作・ゲーム一括登録」ボタンを配置！ */}
+            <button
+              onClick={() => setIsSearchModalOpen(true)}
+              className="px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 shadow-2xs active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5 text-purple-600" />
+              <span>✨ 過去作・ゲームから声優一括登録</span>
+            </button>
           </div>
 
           {/* 検索バー */}
@@ -558,7 +665,7 @@ export default function Home() {
                 </p>
                 <p className="text-xs text-slate-400">
                   {selectedFavType === '声優'
-                    ? 'アニメの詳細画面（モーダル）を開いて声優さんを「★ 推し登録」してみよう！'
+                    ? '「✨ 過去作・ゲームから声優一括登録」ボタンかアニメの詳細から推し声優を登録してみよう！'
                     : 'フィルター条件を変更するか「リセット」を押してください。'}
                 </p>
               </div>
@@ -567,7 +674,7 @@ export default function Home() {
                 {filteredAnime.map((anime) => {
                   const isFav = favorites.includes(anime.id);
 
-                  // 🌟 推し声優の出演判定
+                  // 推し声優の出演判定 ＆ マッチした声優リスト抽出
                   const normalize = (str: string) => str.replace(/[\s ]+/g, '').toLowerCase();
                   const matchedFavCasts = (anime.casts || []).filter((c) =>
                     favCasts.some((f) => normalize(f) === normalize(c))
@@ -595,13 +702,12 @@ export default function Home() {
                           </div>
                         )}
 
-                        {/* 曜日タグ ＆ 🌟推しCV出演バッジ */}
+                        {/* 曜日タグ ＆ 推しCV出演バッジ */}
                         <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
                           <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur text-white font-bold">
                             {anime.dayOfWeek}曜
                           </span>
 
-                          {/* 🎙️ 推し声優が出演している場合に表示 */}
                           {hasFavCast && (
                             <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-600 text-white font-bold flex items-center gap-0.5 shadow-md animate-pulse">
                               <Mic className="w-2.5 h-2.5" />
@@ -680,13 +786,21 @@ export default function Home() {
 
                 {/* タイトル & タグ */}
                 <div className="absolute bottom-3 left-4 right-4 space-y-1 text-white">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500 font-bold uppercase">
                       {selectedAnime.media_text || 'TV'}
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/20 backdrop-blur font-bold">
                       毎週{selectedAnime.dayOfWeek}曜日 更新
                     </span>
+                    
+                    {/* 🌟 制作会社バッジ */}
+                    {studioName && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-900/80 backdrop-blur text-amber-300 font-bold flex items-center gap-1">
+                        <Building className="w-2.5 h-2.5 text-amber-400" />
+                        <span>制作: {studioName}</span>
+                      </span>
+                    )}
                   </div>
                   <h2 className="text-lg font-extrabold leading-snug line-clamp-1">
                     {selectedAnime.title}
@@ -740,14 +854,13 @@ export default function Home() {
 
                 {/* 3. キャスト・声優 ＆ 主題歌（OP/ED）情報 */}
                 <div className="space-y-3 pt-1">
-                  {/* キャスト・声優一覧（推し登録ボタン付き） */}
+                  {/* キャスト・声優一覧（一括登録ボタン付き） */}
                   <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
                     <div className="flex items-center justify-between text-xs font-bold text-slate-600">
                       <span className="flex items-center gap-1.5">
                         <Users className="w-3.5 h-3.5 text-purple-600" /> キャスト・声優
                       </span>
-                      
-                      {/* 🌟 一括推し登録 / 解除ボタン */}
+
                       {!loadingCasts && casts.length > 0 && (
                         <button
                           onClick={toggleAllCastsForAnime}
@@ -854,6 +967,147 @@ export default function Home() {
                     </a>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🌟 過去作・ゲーム検索＆声優一括登録ポップアップ（モーダル） */}
+        {isSearchModalOpen && (
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setIsSearchModalOpen(false)}
+          >
+            <div
+              className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* モーダルヘッダー */}
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-purple-50/50">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  <h2 className="text-sm font-extrabold text-slate-900">過去作・ゲームから声優を一括登録</h2>
+                </div>
+                <button
+                  onClick={() => setIsSearchModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 検索入力フォーム */}
+              <div className="p-4 border-b border-slate-100 space-y-2 bg-white">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="作品名（例: NIKKE, リコリス, 鬼滅...）"
+                      value={workSearchQuery}
+                      onChange={(e) => setWorkSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && searchPastWorks()}
+                      className="w-full bg-slate-50 text-slate-800 text-xs pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-500 focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <button
+                    onClick={searchPastWorks}
+                    disabled={searchingWorks}
+                    className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 flex items-center gap-1"
+                  >
+                    {searchingWorks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '検索'}
+                  </button>
+                </div>
+              </div>
+
+              {/* 検索結果＆キャスト表示エリア */}
+              <div className="p-4 overflow-y-auto flex-1 space-y-4">
+                {workSearchResults.length > 0 && !selectedSearchWork && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-slate-500">該当作品を選択してください（最大10件）</p>
+                    <div className="space-y-1.5">
+                      {workSearchResults.map((work) => (
+                        <button
+                          key={work.id}
+                          onClick={() => selectSearchWork(work)}
+                          className="w-full text-left p-3 rounded-2xl border border-slate-100 hover:border-purple-300 hover:bg-purple-50/50 transition-all flex items-center justify-between group"
+                        >
+                          <div>
+                            <p className="text-xs font-bold text-slate-800 group-hover:text-purple-700">{work.title}</p>
+                            <p className="text-[10px] text-slate-400">{work.media_text} • {work.season_name_text || '過去作'}</p>
+                          </div>
+                          <span className="text-xs text-purple-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                            選択 ➔
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 選択した作品のキャスト確認 ＆ 一括登録ボタン */}
+                {selectedSearchWork && (
+                  <div className="space-y-3 bg-purple-50/60 p-4 rounded-2xl border border-purple-200">
+                    <div className="flex items-center justify-between border-b border-purple-200/60 pb-2">
+                      <div>
+                        <button
+                          onClick={() => setSelectedSearchWork(null)}
+                          className="text-[10px] text-purple-600 hover:underline mb-0.5 block"
+                        >
+                          ← 検索結果一覧に戻る
+                        </button>
+                        <h3 className="text-xs font-extrabold text-purple-950">{selectedSearchWork.title}</h3>
+                      </div>
+
+                      {searchWorkCasts.length > 0 && (
+                        <button
+                          onClick={registerAllPastWorkCasts}
+                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1 active:scale-95"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>キャストを全員推し登録！</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {loadingSearchCasts ? (
+                      <div className="flex items-center justify-center py-6 text-xs text-purple-600 gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>キャスト情報を取得中...</span>
+                      </div>
+                    ) : searchWorkCasts.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pt-1">
+                        {searchWorkCasts.map((c, idx) => {
+                          const isFavCast = favCasts.includes(c.cast_name);
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => toggleFavCast(c.cast_name)}
+                              className={`text-[11px] px-2.5 py-1 rounded-xl border transition-all flex items-center gap-1 font-medium ${
+                                isFavCast
+                                  ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50'
+                              }`}
+                            >
+                              <Star className={`w-3 h-3 ${isFavCast ? 'fill-white text-white' : 'text-purple-400'}`} />
+                              <span className={isFavCast ? 'text-purple-100' : 'text-slate-400'}>{c.character_name}:</span>
+                              <strong className={isFavCast ? 'text-white' : 'text-purple-700'}>{c.cast_name}</strong>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 py-2 text-center">キャストデータが見つかりませんでした。</p>
+                    )}
+                  </div>
+                )}
+
+                {workSearchResults.length === 0 && !searchingWorks && (
+                  <div className="text-center py-8 text-slate-400 space-y-1">
+                    <p className="text-xs font-bold text-slate-500">作品名を入力して検索してください</p>
+                    <p className="text-[10px]">『NIKKE』『リコリス・リコイル』『鬼滅の刃』など過去の名作アニメ・作品が登録できます。</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
