@@ -10,6 +10,7 @@ const toHiragana = (str: string) => {
   );
 };
 
+// アニメ作品の型定義
 interface AnimeWork {
   id: number;
   title: string;
@@ -22,6 +23,12 @@ interface AnimeWork {
   dayOfWeek: string;
   channels: string[];
   image_url?: string;
+}
+
+// キャスト・声優情報の型定義
+interface CastInfo {
+  character_name: string;
+  cast_name: string;
 }
 
 const DAYS = ['すべて', '月', '火', '水', '木', '金', '土', '日'];
@@ -39,19 +46,24 @@ const PLATFORMS = [
 ];
 
 export default function Home() {
+  // フィルター＆検索用ステート
   const [selectedDay, setSelectedDay] = useState('すべて');
   const [selectedPlatform, setSelectedPlatform] = useState('すべて');
   const [selectedFavType, setSelectedFavType] = useState('すべて');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // データ用ステート
   const [animeList, setAnimeList] = useState<AnimeWork[]>([]);
   const [favorites, setFavorites] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [seasonName, setSeasonName] = useState('今期');
 
-  // ポップアップ詳細モーダル用のステート
+  // モーダル＆キャスト用ステート
   const [selectedAnime, setSelectedAnime] = useState<AnimeWork | null>(null);
   const [activeModalPlatform, setActiveModalPlatform] = useState<string>('');
+  const [casts, setCasts] = useState<CastInfo[]>([]);
+  const [loadingCasts, setLoadingCasts] = useState(false);
 
   // お気に入りデータの読み込み（ローカルストレージ）
   useEffect(() => {
@@ -80,6 +92,35 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('miier_favorites', JSON.stringify(updated));
     }
+  };
+
+  // モーダルを開く ＆ 声優（キャスト）データを自動取得
+  const openModal = async (anime: AnimeWork) => {
+    setSelectedAnime(anime);
+    setActiveModalPlatform(anime.channels[0] || 'DMM TV');
+    setCasts([]);
+    setLoadingCasts(true);
+
+    const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
+    if (token) {
+      try {
+        const res = await fetch(
+          `https://api.annict.com/v1/casts?filter_work_id=${anime.id}&sort_id=asc&per_page=12`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const fetchedCasts = (data.casts || []).map((c: any) => ({
+            character_name: c.character?.name || '登場人物',
+            cast_name: c.person?.name || c.name || '未登録',
+          }));
+          setCasts(fetchedCasts);
+        }
+      } catch (e) {
+        console.warn('キャスト情報の取得に失敗しました:', e);
+      }
+    }
+    setLoadingCasts(false);
   };
 
   // 🔄 Annict APIから今期アニメ＆番組表データを自動取得
@@ -167,7 +208,6 @@ export default function Home() {
           }
         }
 
-        // サムネイル画像の優先取得（facebook_ogp_url > recommended_url）
         const imageUrl =
           w.images?.facebook_ogp_url ||
           w.images?.recommended_url ||
@@ -201,12 +241,6 @@ export default function Home() {
   useEffect(() => {
     fetchAnnictAnime();
   }, []);
-
-  // モーダルが開いた時にデフォルトの配信サイトを選択
-  const openModal = (anime: AnimeWork) => {
-    setSelectedAnime(anime);
-    setActiveModalPlatform(anime.channels[0] || 'DMM TV');
-  };
 
   // 🔍 検索＆フィルター判定ロジック
   const filteredAnime = animeList.filter((anime) => {
@@ -277,7 +311,7 @@ export default function Home() {
 
       {/* 2. メインエリア */}
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-5">
-        {/* 絞り込みコントロールパネル */}
+        {/* 絞り込みコントロールパネル（3列レイアウト） */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
           
           {/* 【1列目】 曜日フィルター */}
@@ -433,7 +467,6 @@ export default function Home() {
                 </p>
               </div>
             ) : (
-              /* ✨ 画像付き・超スタイリッシュなシンプルカードグリッド！ */
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
                 {filteredAnime.map((anime) => {
                   const isFav = favorites.includes(anime.id);
@@ -459,7 +492,7 @@ export default function Home() {
                           </div>
                         )}
 
-                        {/* タグオーバーレイ */}
+                        {/* 曜日タグ */}
                         <div className="absolute top-2 left-2 flex items-center gap-1">
                           <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur text-white font-bold">
                             {anime.dayOfWeek}曜
@@ -480,7 +513,7 @@ export default function Home() {
                         </button>
                       </div>
 
-                      {/* カード下部（タイトル＆タップ誘導） */}
+                      {/* カード下部 */}
                       <div className="p-3 space-y-1.5 flex-1 flex flex-col justify-between">
                         <h2 className="text-xs font-bold text-slate-800 leading-snug line-clamp-2 group-hover:text-amber-600 transition-colors">
                           {anime.title}
@@ -501,7 +534,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* 🌟 【神進化】作品詳細ポップアップ（モーダル） */}
+        {/* 🌟 作品詳細ポップアップ（モーダル） */}
         {selectedAnime && (
           <div
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
@@ -511,7 +544,7 @@ export default function Home() {
               className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* モーダル上部画像ヘッダー */}
+              {/* モーダル画像ヘッダー */}
               <div className="relative w-full h-44 bg-gradient-to-br from-amber-400 to-orange-500 overflow-hidden">
                 {selectedAnime.image_url ? (
                   <img
@@ -534,7 +567,7 @@ export default function Home() {
                   <X className="w-5 h-5" />
                 </button>
 
-                {/* タイトル & タグ（画像の上に美しく配置） */}
+                {/* タイトル & タグ */}
                 <div className="absolute bottom-3 left-4 right-4 space-y-1 text-white">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500 font-bold uppercase">
@@ -552,7 +585,7 @@ export default function Home() {
 
               {/* モーダル本文 */}
               <div className="p-5 space-y-4">
-                {/* 1. 取扱配信サービス・放送局（タップで切り替え！） */}
+                {/* 1. 取扱配信サービス・放送局 */}
                 <div className="space-y-2">
                   <h3 className="text-xs font-bold text-slate-500 flex items-center gap-1.5">
                     <Film className="w-3.5 h-3.5 text-amber-500" /> 取扱配信・放送局（タップして話数をチェック）
@@ -577,7 +610,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* 2. 選択された配信サイトごとの話数ステータス！ */}
+                {/* 2. 配信状況・話数ステータス */}
                 <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-4 space-y-2 transition-all">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
@@ -594,19 +627,53 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* 3. 主題歌 & キャスト情報（準備枠） */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 space-y-1">
-                    <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                      <Music className="w-3 h-3 text-amber-500" /> 主題歌情報
+                {/* 3. キャスト・声優 ＆ 主題歌（OP/ED）情報 */}
+                <div className="space-y-3 pt-1">
+                  {/* キャスト・声優一覧 */}
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
+                    <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-purple-600" /> キャスト・声優（CV）
                     </span>
-                    <p className="text-xs text-slate-500 font-medium">Step 2で連携予定 🎵</p>
+
+                    {loadingCasts ? (
+                      <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
+                        <span>キャストデータを取得中...</span>
+                      </div>
+                    ) : casts.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
+                        {casts.map((c, idx) => (
+                          <span
+                            key={idx}
+                            className="text-[11px] bg-white text-slate-700 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs font-medium"
+                          >
+                            <span className="text-slate-400">{c.character_name}:</span>{' '}
+                            <strong className="text-purple-700 font-bold">{c.cast_name}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 py-1">声優情報が未登録です</p>
+                    )}
                   </div>
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 space-y-1">
-                    <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                      <Users className="w-3 h-3 text-purple-500" /> キャスト・声優
+
+                  {/* 主題歌（OP / EDテーマ）試聴 */}
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
+                    <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                      <Music className="w-3.5 h-3.5 text-amber-500" /> 主題歌（OP / EDテーマ）
                     </span>
-                    <p className="text-xs text-slate-500 font-medium">Step 2で連携予定 🎙️</p>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <a
+                        href={`https://www.youtube.com/results?search_query=${encodeURIComponent(
+                          selectedAnime.title + ' OP ED 主題歌'
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 flex items-center justify-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px] py-2 px-2.5 rounded-xl border border-red-200 transition-colors"
+                      >
+                        <span>▶ YouTubeでノンクレジットOP/EDを探す</span>
+                      </a>
+                    </div>
                   </div>
                 </div>
 
