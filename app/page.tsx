@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Tv, ExternalLink, Film, BookOpen, RefreshCw, Loader2, Calendar, PlayCircle } from 'lucide-react';
 
-// カタカナをひらがなに変換（表記ゆれ吸収）
+// カタカナをひ racial に変換（表記ゆれ吸収）
 const toHiragana = (str: string) => {
   return str.replace(/[\u30a1-\u30f6]/g, (match) =>
     String.fromCharCode(match.charCodeAt(0) - 0x60)
@@ -35,7 +35,7 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState('');
   const [seasonName, setSeasonName] = useState('今期');
 
-  // 🔄 Annict APIから今期アニメを全件自動取得
+  // 🔄 Annict APIから今期アニメ＆リアル配信データを自動取得
   const fetchAnnictAnime = async () => {
     setLoading(true);
     setErrorMsg('');
@@ -62,6 +62,7 @@ export default function Home() {
     }
 
     try {
+      // 1. 作品一覧を取得
       const worksRes = await fetch(
         `https://api.annict.com/v1/works?filter_season=${seasonCode}&sort_watchers_count=desc&per_page=50`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -71,9 +72,49 @@ export default function Home() {
       const worksData = await worksRes.json();
       const rawWorks = worksData.works || [];
 
-      // 曜日と配信プラットフォームを全作品に安全＆確実に割り当て
-      const dayNames = ['月', '火', '水', '木', '金', '土', '日'];
+      // 2. 番組表・配信局データを安全に別で取得（失敗しても作品一覧は壊さない）
+      const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+      const channelMap: Record<number, { day?: string; channels: Set<string> }> = {};
+
+      try {
+        const progRes = await fetch(
+          `https://api.annict.com/v1/programs?filter_season=${seasonCode}&per_page=100`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (progRes.ok) {
+          const progData = await progRes.json();
+          (progData.programs || []).forEach((prog: any) => {
+            const wId = prog.work?.id;
+            if (!wId) return;
+
+            if (!channelMap[wId]) {
+              channelMap[wId] = { channels: new Set() };
+            }
+
+            if (prog.channel?.name) {
+              channelMap[wId].channels.add(prog.channel.name);
+            }
+
+            if (prog.started_at && !channelMap[wId].day) {
+              const d = new Date(prog.started_at);
+              channelMap[wId].day = dayNames[d.getDay()];
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('配信局データの取得をスキップしました:', e);
+      }
+
+      // 3. 作品データと配信・曜日情報を統合
       const formattedWorks: AnimeWork[] = rawWorks.map((w: any, idx: number) => {
+        const meta = channelMap[w.id];
+        const rawChannels = meta ? Array.from(meta.channels) : [];
+
+        // 番組表から取れたチャンネルがある場合はそのまま使用、ない場合は標準Web配信セット
+        const channels = rawChannels.length > 0
+          ? rawChannels
+          : ['DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT'];
+
         return {
           id: w.id,
           title: w.title,
@@ -83,8 +124,8 @@ export default function Home() {
           official_site_url: w.official_site_url || '',
           twitter_username: w.twitter_username || '',
           season_name_text: w.season_name_text || '',
-          dayOfWeek: dayNames[(w.id || idx) % 7], // IDから曜日を均等に決定
-          channels: ['DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT', 'Netflix', '地上波・BS'], // 全主要プラットフォーム対応
+          dayOfWeek: meta?.day || ['月', '火', '水', '木', '金', '土', '日'][(w.id || idx) % 7],
+          channels: channels,
         };
       });
 
@@ -101,16 +142,29 @@ export default function Home() {
     fetchAnnictAnime();
   }, []);
 
-  // 🔍 検索＆ダブルフィルターロジック（超高精度＆安全）
+  // 🔍 検索＆リアルプラットフォームフィルターロジック
   const filteredAnime = animeList.filter((anime) => {
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) {
       return false;
     }
 
-    // 2. 配信プラットフォームフィルター
-    if (selectedPlatform !== 'すべて' && !anime.channels.includes(selectedPlatform)) {
-      return false;
+    // 2. 配信プラットフォーム/放送局フィルター
+    if (selectedPlatform !== 'すべて') {
+      const hasMatch = anime.channels.some((ch) => {
+        const c = ch.toLowerCase();
+        if (selectedPlatform === 'DMM TV') return c.includes('dmm');
+        if (selectedPlatform === 'Amazon Prime') return c.includes('amazon') || c.includes('prime') || c.includes('プライム');
+        if (selectedPlatform === 'dアニメストア') return c.includes('dアニメ') || c.includes('danime');
+        if (selectedPlatform === 'U-NEXT') return c.includes('u-next') || c.includes('unext');
+        if (selectedPlatform === 'Netflix') return c.includes('netflix') || c.includes('ネットフリックス');
+        if (selectedPlatform === '地上波・BS') {
+          return c.includes('mx') || c.includes('bs') || c.includes('tv') || c.includes('テレビ') || c.includes('放送') || c.includes('テレ東') || c.includes('フジ') || c.includes('nhk') || c.includes('tbs') || c.includes('ntv');
+        }
+        return false;
+      });
+
+      if (!hasMatch) return false;
     }
 
     // 3. タイトル検索
@@ -222,7 +276,7 @@ export default function Home() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-            <p className="text-xs">今期アニメデータを読み込み中...</p>
+            <p className="text-xs">今期アニメ＆リアル配信データを取得中...</p>
           </div>
         ) : (
           <div>
@@ -282,9 +336,9 @@ export default function Home() {
                       <div className="space-y-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <div className="flex items-center gap-2 text-slate-700">
                           <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span className="font-semibold text-slate-500">主要配信:</span>
+                          <span className="font-semibold text-slate-500">対応・配信:</span>
                           <span className="text-slate-700 font-medium truncate">
-                            DMM TV / Amazon / dアニメ ほか
+                            {anime.channels.slice(0, 3).join(' / ')}
                           </span>
                         </div>
                         {anime.official_site_url && (
