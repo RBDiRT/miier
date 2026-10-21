@@ -209,32 +209,30 @@ export default function Home() {
         console.warn('配信局データの取得をスキップしました:', e);
       }
 
-      // 3. キャストデータを10作品ずつチャンク分割して安全に全件取得（URL超長エラー防止！）
+      // 3. 10作品ずつ並列取得（Annict APIはfilter_work_idに1作品ずつしか指定できないため）
       const castMap: Record<number, string[]> = {};
       const chunkSize = 10;
       for (let i = 0; i < rawWorks.length; i += chunkSize) {
-        const chunkIds = rawWorks.slice(i, i + chunkSize).map((w: any) => w.id).join(',');
-        try {
-          const castRes = await fetch(
-            `https://api.annict.com/v1/casts?filter_work_id=${chunkIds}&per_page=100`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          if (castRes.ok) {
-            const castData = await castRes.json();
-            (castData.casts || []).forEach((c: any) => {
-              const wId = c.work?.id;
-              const personName = c.person?.name || c.name;
-              if (wId && personName) {
-                if (!castMap[wId]) castMap[wId] = [];
-                if (!castMap[wId].includes(personName)) {
-                  castMap[wId].push(personName);
-                }
+        const batch = rawWorks.slice(i, i + chunkSize);
+        await Promise.all(
+          batch.map(async (w: any) => {
+            try {
+              const castRes = await fetch(
+                `https://api.annict.com/v1/casts?filter_work_id=${w.id}&per_page=20`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (castRes.ok) {
+                const castData = await castRes.json();
+                const names = (castData.casts || []).map(
+                  (c: any) => c.person?.name || c.name || ''
+                );
+                castMap[w.id] = names;
               }
-            });
-          }
-        } catch (e) {
-          console.warn('キャスト取得エラー:', e);
-        }
+            } catch (e) {
+              console.warn(`キャスト取得失敗 (workId: ${w.id}):`, e);
+            }
+          })
+        );
       }
 
       // 4. データ整形
@@ -321,7 +319,11 @@ export default function Home() {
       if (!favorites.includes(anime.id)) return false;
     } else if (selectedFavType === '声優') {
       if (favCasts.length === 0) return false;
-      const hasFavCast = anime.casts?.some((castName) => favCasts.includes(castName));
+      // 空白（スペース）を除外して名前の一致を判定！
+      const hasFavCast = anime.casts?.some((castName) => {
+        const cleanCast = castName.replace(/\s+/g, '');
+        return favCasts.some((fav) => fav.replace(/\s+/g, '') === cleanCast);
+      });
       if (!hasFavCast) return false;
     }
 
