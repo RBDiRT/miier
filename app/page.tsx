@@ -65,6 +65,37 @@ export default function Home() {
   const [casts, setCasts] = useState<CastInfo[]>([]);
   const [loadingCasts, setLoadingCasts] = useState(false);
 
+  // 声優お気に入り用のステート
+  const [favCasts, setFavCasts] = useState<string[]>([]);
+
+  // 声優お気に入りデータの読み込み
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedCasts = localStorage.getItem('miier_fav_casts');
+      if (savedCasts) {
+        try {
+          setFavCasts(JSON.parse(savedCasts));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }, []);
+
+  // 声優お気に入りの切り替え関数
+  const toggleFavCast = (castName: string) => {
+    let updated: string[];
+    if (favCasts.includes(castName)) {
+      updated = favCasts.filter((c) => c !== castName);
+    } else {
+      updated = [...favCasts, castName];
+    }
+    setFavCasts(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
+    }
+  };
+
   // お気に入りデータの読み込み（ローカルストレージ）
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -365,14 +396,22 @@ export default function Home() {
             </span>
             <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
               <button
-                onClick={() => setSelectedFavType('すべて')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 ${
-                  selectedFavType === 'すべて'
-                    ? 'bg-slate-800 text-white shadow-sm'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                onClick={() => setSelectedFavType('声優')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${
+                  selectedFavType === '声優'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
                 }`}
               >
-                指定なし
+                <Mic className="w-3 h-3" />
+                <span>🎙️ 声優お気に入り</span>
+                {favCasts.length > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    selectedFavType === '声優' ? 'bg-white text-purple-800' : 'bg-purple-200 text-purple-900'
+                  }`}>
+                    {favCasts.length}人
+                  </span>
+                )}
               </button>
 
               <button
@@ -642,15 +681,25 @@ export default function Home() {
                       </div>
                     ) : casts.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
-                        {casts.map((c, idx) => (
-                          <span
-                            key={idx}
-                            className="text-[11px] bg-white text-slate-700 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs font-medium"
-                          >
-                            <span className="text-slate-400">{c.character_name}:</span>{' '}
-                            <strong className="text-purple-700 font-bold">{c.cast_name}</strong>
-                          </span>
-                        ))}
+                        {casts.map((c, idx) => {
+                          const isFavCast = favCasts.includes(c.cast_name);
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => toggleFavCast(c.cast_name)}
+                              title={isFavCast ? '推し声優から解除' : '推し声優に登録！'}
+                              className={`text-[11px] px-2.5 py-1 rounded-xl border transition-all flex items-center gap-1 font-medium ${
+                                isFavCast
+                                  ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50'
+                              }`}
+                            >
+                              <Star className={`w-3 h-3 ${isFavCast ? 'fill-white text-white' : 'text-purple-400'}`} />
+                              <span className={isFavCast ? 'text-purple-100' : 'text-slate-400'}>{c.character_name}:</span>
+                              <strong className={isFavCast ? 'text-white' : 'text-purple-700'}>{c.cast_name}</strong>
+                            </button>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="text-xs text-slate-400 py-1">声優情報が未登録です</p>
