@@ -72,7 +72,7 @@ export default function Home() {
   // 推し声優が出演している作品IDのリスト
   const [favCastWorkIds, setFavCastWorkIds] = useState<number[]>([]);
 
-  // 推し声優の出演作品IDをAnnict APIから取得する関数
+  // 推し声優の出演作品IDをAnnict APIから正しく取得する関数
   useEffect(() => {
     const fetchFavCastWorks = async () => {
       const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
@@ -82,18 +82,30 @@ export default function Home() {
       }
 
       try {
-        // 登録されている推し声優名でピンポイント検索！
         const workIdsSet = new Set<number>();
         for (const castName of favCasts) {
-          const res = await fetch(
-            `https://api.annict.com/v1/casts?filter_person_name=${encodeURIComponent(castName)}&per_page=50`,
+          // 1. まず「人物ID（Person ID）」を名前で検索
+          const personRes = await fetch(
+            `https://api.annict.com/v1/people?filter_name=${encodeURIComponent(castName)}&per_page=1`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
-          if (res.ok) {
-            const data = await res.json();
-            (data.casts || []).forEach((c: any) => {
-              if (c.work?.id) workIdsSet.add(c.work.id);
-            });
+          if (personRes.ok) {
+            const personData = await personRes.json();
+            const personId = personData.people?.[0]?.id;
+
+            // 2. 人物IDを使って「本当の出演作品ID」を取得！
+            if (personId) {
+              const castRes = await fetch(
+                `https://api.annict.com/v1/casts?filter_person_id=${personId}&per_page=50`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (castRes.ok) {
+                const castData = await castRes.json();
+                (castData.casts || []).forEach((c: any) => {
+                  if (c.work?.id) workIdsSet.add(c.work.id);
+                });
+              }
+            }
           }
         }
         setFavCastWorkIds(Array.from(workIdsSet));
