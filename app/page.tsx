@@ -209,31 +209,29 @@ export default function Home() {
         console.warn('配信局データの取得をスキップしました:', e);
       }
 
-      // 3. 10作品ずつ並列取得（Annict APIはfilter_work_idに1作品ずつしか指定できないため）
+      // 3. レート制限を回避しながら作品ごとにキャストを取得
       const castMap: Record<number, string[]> = {};
-      const chunkSize = 10;
-      for (let i = 0; i < rawWorks.length; i += chunkSize) {
-        const batch = rawWorks.slice(i, i + chunkSize);
-        await Promise.all(
-          batch.map(async (w: any) => {
-            try {
-              const castRes = await fetch(
-                `https://api.annict.com/v1/casts?filter_work_id=${w.id}&per_page=20`,
-                { headers: { Authorization: `Bearer ${token}` } }
-              );
-              if (castRes.ok) {
-                const castData = await castRes.json();
-                const names = (castData.casts || []).map(
-                  (c: any) => c.person?.name || c.name || ''
-                );
-                castMap[w.id] = names;
-              }
-            } catch (e) {
-              console.warn(`キャスト取得失敗 (workId: ${w.id}):`, e);
-            }
-          })
-        );
+      
+      // 5作品ずつ安全にシーケンシャル取得
+      for (const w of rawWorks) {
+        try {
+          const castRes = await fetch(
+            `https://api.annict.com/v1/casts?filter_work_id=${w.id}&per_page=20`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (castRes.ok) {
+            const castData = await castRes.json();
+            const names = (castData.casts || []).map(
+              (c: any) => c.person?.name || c.name || ''
+            ).filter(Boolean);
+            castMap[w.id] = names;
+          }
+        } catch (e) {
+          console.warn(`キャスト取得失敗 (workId: ${w.id}):`, e);
+        }
       }
+
+      console.log('【デバッグ】取得完了したキャストマップ:', castMap);
 
       // 4. データ整形
       const formattedWorks: AnimeWork[] = rawWorks.map((w: any, idx: number) => {
@@ -319,12 +317,19 @@ export default function Home() {
       if (!favorites.includes(anime.id)) return false;
     } else if (selectedFavType === '声優') {
       if (favCasts.length === 0) return false;
-      // 空白（スペース）を除外して名前の一致を判定！
+      
+      console.log('【デバッグ】登録中の推し声優:', favCasts);
+      
+      // スペース（全角・半角）を完全に除去して名前を比較！
+      const normalize = (str: string) => str.replace(/[\s ]+/g, '').toLowerCase();
+      const normalizedFavs = favCasts.map(normalize);
+
       const hasFavCast = anime.casts?.some((castName) => {
-        const cleanCast = castName.replace(/\s+/g, '');
-        return favCasts.some((fav) => fav.replace(/\s+/g, '') === cleanCast);
+        const cleanCast = normalize(castName);
+        return normalizedFavs.includes(cleanCast);
       });
-      if (!hasFavCast) return false;
+
+      return hasFavCast;
     }
 
     // 4. 検索キーワードフィルター
