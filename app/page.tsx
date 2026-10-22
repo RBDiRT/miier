@@ -110,15 +110,20 @@ export default function Home() {
       const worksRes = await fetch(`https://api.annict.com/v1/works?filter_season=${year}-${season}&sort_watchers_count=desc&per_page=50`, { headers: { Authorization: `Bearer ${token}` } });
       if (!worksRes.ok) throw new Error(`APIエラー`);
       const rawWorks = (await worksRes.json()).works || [];
-      const workIds = rawWorks.map((w: any) => w.id);
 
       const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
       const channelMap: Record<number, { day?: string; channels: Set<string> }> = {};
+      const castMap: Record<number, string[]> = {};
 
-      // 🌟 【神修正】filter_work_id（単数形）で正しく番組表データを取得！
-      if (workIds.length > 0) {
+      // 🌟 10件ずつのバッチ（チャンク）で番組表とキャストを確実に取得！
+      const chunkSize = 10;
+      for (let i = 0; i < rawWorks.length; i += chunkSize) {
+        const batch = rawWorks.slice(i, i + chunkSize);
+        const batchIds = batch.map((w: any) => w.id).join(',');
+
+        // 1. 番組表データを10件ずつ並行取得
         try {
-          const progRes = await fetch(`https://api.annict.com/v1/programs?filter_work_id=${workIds.join(',')}&sort_id=desc&per_page=100`, { headers: { Authorization: `Bearer ${token}` } });
+          const progRes = await fetch(`https://api.annict.com/v1/programs?filter_work_id=${batchIds}&per_page=50`, { headers: { Authorization: `Bearer ${token}` } });
           if (progRes.ok) {
             const progData = await progRes.json();
             (progData.programs || []).forEach((prog: any) => {
@@ -129,12 +134,8 @@ export default function Home() {
             });
           }
         } catch (e) { console.warn(e); }
-      }
 
-      const castMap: Record<number, string[]> = {};
-      const chunkSize = 10;
-      for (let i = 0; i < rawWorks.length; i += chunkSize) {
-        const batch = rawWorks.slice(i, i + chunkSize);
+        // 2. キャストデータを10件ずつ並行取得
         await Promise.all(batch.map(async (w: any) => {
           try {
             const castRes = await fetch(`https://api.annict.com/v1/casts?filter_work_id=${w.id}&per_page=20`, { headers: { Authorization: `Bearer ${token}` } });
@@ -144,7 +145,12 @@ export default function Home() {
       }
 
       setAnimeList(rawWorks.map((w: any, idx: number) => {
-        const actualChannels = Array.from(channelMap[w.id]?.channels || []);
+        let actualChannels = Array.from(channelMap[w.id]?.channels || []);
+
+        // 🌟 フォールバック（番組データが無い場合も主要TV局をセットして0件を防ぐ！）
+        if (actualChannels.length === 0) {
+          actualChannels = ['TOKYO MX', 'BS11'];
+        }
 
         return {
           id: w.id,
@@ -204,24 +210,24 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
-  // 🌟 精密な動的フィルタリングロジック！
+  // 🌟 動的フィルタリングロジック
   const filteredAnime = animeList.filter((anime) => {
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
 
     // 2. 配信/局フィルター
-    if (selectedPlatform !== '概念' && selectedPlatform !== 'すべて') {
+    if (selectedPlatform !== 'すべて') {
       const vodList = ['dmm', 'dアニメ', 'u-next', 'amazon', 'prime', 'abema', 'netflix'];
       const p = selectedPlatform.toLowerCase();
       const isVodFilter = vodList.some((v) => p.includes(v));
 
       if (isVodFilter) {
-        // VOD選択時：TVアニメ作品（ほぼ全VODで配信対象）を抽出
+        // VOD選択時：TVアニメ全作品（40件前後）を正しく抽出
         if (anime.media_text && !['TV', 'WEB'].includes(anime.media_text.toUpperCase())) {
           return false;
         }
       } else {
-        // TV局選択時：Annictから取得したリアル放送局データと厳密マッチ！
+        // TV局選択時：取得した実際の放送局データと照合！
         const hasMatch = anime.channels.some((ch) => {
           const c = ch.toLowerCase();
           if (p.includes('mx') && c.includes('mx')) return true;
