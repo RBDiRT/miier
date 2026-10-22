@@ -10,6 +10,23 @@ import { PastWorkModal } from '../components/PastWorkModal';
 
 const toHiragana = (str: string) => str.replace(/[\u30a1-\u30f6]/g, (m) => String.fromCharCode(m.charCodeAt(0) - 0x60));
 
+// 🌟 プラットフォーム名の表記揺れを100%統一する正規化関数
+const normalizePlatform = (name: string) => {
+  const s = name.toLowerCase().replace(/[\s_ ]+/g, '');
+  if (s.includes('mx') || s.includes('tokyo')) return 'tokyomx';
+  if (s.includes('bs11')) return 'bs11';
+  if (s.includes('テレビ東京') || s.includes('テレ東') || s.includes('tx')) return 'tvtokyo';
+  if (s.includes('フジ') || s.includes('fuji')) return 'fujitv';
+  if (s.includes('at-x') || s.includes('atx')) return 'atx';
+  if (s.includes('dアニメ') || s.includes('docomo')) return 'danime';
+  if (s.includes('dmm')) return 'dmm';
+  if (s.includes('unext') || s.includes('u-next')) return 'unext';
+  if (s.includes('prime') || s.includes('amazon') || s.includes('アマプラ')) return 'prime';
+  if (s.includes('abema') || s.includes('アベマ')) return 'abema';
+  if (s.includes('netflix') || s.includes('ネトフリ')) return 'netflix';
+  return s;
+};
+
 export default function Home() {
   const [selectedDay, setSelectedDay] = useState('すべて');
   const [selectedPlatform, setSelectedPlatform] = useState('すべて');
@@ -145,21 +162,19 @@ export default function Home() {
         const apiChannels = Array.from(channelMap[w.id]?.channels || []);
         const generatedChannels = new Set<string>(apiChannels);
 
-        // 🌟 インデックス（idx: 0〜49）に基づく100%確実な均等分散アルゴリズム！
-        // TV局
-        if (idx % 2 === 0) generatedChannels.add('TOKYO MX');       // 25件
-        if (idx % 3 !== 0) generatedChannels.add('BS11');           // 33件
-        if (idx % 3 === 0) generatedChannels.add('テレビ東京');      // 17件
-        if (idx % 4 === 1) generatedChannels.add('フジテレビ');      // 12件
-        if (idx % 5 === 2) generatedChannels.add('AT-X');            // 10件
+        // 🌟 インデックス（idx: 0〜49）で各局・各配信サイトに綺麗に分散！
+        if (idx % 2 === 0 || idx % 5 === 1) generatedChannels.add('TOKYO MX');
+        if (idx % 3 !== 0) generatedChannels.add('BS11');
+        if (idx % 3 === 0) generatedChannels.add('テレビ東京');
+        if (idx % 4 === 1 || idx % 7 === 0) generatedChannels.add('フジテレビ');
+        if (idx % 3 === 1) generatedChannels.add('AT-X');
 
-        // VOD配信サービス
-        if (idx % 5 !== 0) generatedChannels.add('dアニメストア');   // 40件
-        if (idx % 4 !== 0) generatedChannels.add('DMM TV');          // 37件
-        if (idx % 3 !== 1) generatedChannels.add('U-NEXT');          // 33件
-        if (idx % 2 === 1) generatedChannels.add('Amazon Prime');    // 25件
-        if (idx % 3 !== 2) generatedChannels.add('ABEMA');           // 33件
-        if (idx % 4 === 0) generatedChannels.add('Netflix');         // 13件
+        if (idx % 10 !== 0) generatedChannels.add('dアニメストア');
+        if (idx % 6 !== 1) generatedChannels.add('DMM TV');
+        if (idx % 4 !== 2) generatedChannels.add('U-NEXT');
+        if (idx % 5 !== 3) generatedChannels.add('Amazon Prime');
+        if (idx % 3 !== 2) generatedChannels.add('ABEMA');
+        if (idx % 4 === 0) generatedChannels.add('Netflix');
 
         return {
           id: w.id,
@@ -219,23 +234,15 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
-  // 🌟 シンプル＆100%確実に絞り込まれるフィルター判定
+  // 🌟 100%確実にマッチする正規化判定フィルター！
   const filteredAnime = animeList.filter((anime) => {
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
 
-    // 2. 配信/局フィルター
+    // 2. 配信/局フィルター（正規化キーで照合！）
     if (selectedPlatform !== 'すべて') {
-      const p = selectedPlatform.toLowerCase();
-      const hasMatch = anime.channels.some((ch) => {
-        const c = ch.toLowerCase();
-        return c.includes(p) || p.includes(c) ||
-          ((p.includes('prime') || p.includes('amazon')) && (c.includes('prime') || c.includes('amazon'))) ||
-          (p.includes('mx') && c.includes('mx')) ||
-          (p.includes('bs11') && c.includes('bs11')) ||
-          ((p.includes('テレビ東京') || p.includes('テレ東')) && (c.includes('テレビ東京') || c.includes('テレ東')));
-      });
-
+      const targetKey = normalizePlatform(selectedPlatform);
+      const hasMatch = anime.channels.some((ch) => normalizePlatform(ch) === targetKey);
       if (!hasMatch) return false;
     }
 
