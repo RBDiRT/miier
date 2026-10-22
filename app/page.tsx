@@ -137,13 +137,27 @@ export default function Home() {
         }));
       }
 
-      setAnimeList(rawWorks.map((w: any, idx: number) => ({
-        id: w.id, title: w.title, title_kana: w.title_kana || '', media_text: w.media_text || 'TV',
-        episodes_count: w.episodes_count || 0, official_site_url: w.official_site_url || '', twitter_username: w.twitter_username || '',
-        season_name_text: w.season_name_text || '', dayOfWeek: channelMap[w.id]?.day || ['月', '火', '水', '木', '金', '土', '日'][(w.id || idx) % 7],
-        channels: Array.from(channelMap[w.id]?.channels || []),
-        image_url: w.images?.facebook_ogp_url || w.images?.recommended_url || '', casts: castMap[w.id] || [],
-      })));
+      setAnimeList(rawWorks.map((w: any, idx: number) => {
+        const tvChannels = Array.from(channelMap[w.id]?.channels || []);
+        // TVアニメには主要配信サービスも配信枠としてセット
+        const vodServices = ['DMM TV', 'dアニメストア', 'U-NEXT', 'Amazon Prime', 'ABEMA'];
+        const combinedChannels = Array.from(new Set([...tvChannels, ...vodServices]));
+
+        return {
+          id: w.id,
+          title: w.title,
+          title_kana: w.title_kana || '',
+          media_text: w.media_text || 'TV',
+          episodes_count: w.episodes_count || 0,
+          official_site_url: w.official_site_url || '',
+          twitter_username: w.twitter_username || '',
+          season_name_text: w.season_name_text || '',
+          dayOfWeek: channelMap[w.id]?.day || ['月', '火', '水', '木', '金', '土', '日'][(w.id || idx) % 7],
+          channels: combinedChannels,
+          image_url: w.images?.facebook_ogp_url || w.images?.recommended_url || '',
+          casts: castMap[w.id] || [],
+        };
+      }));
     } catch (err) { setErrorMsg('データ取得エラー'); } finally { setLoading(false); }
   };
 
@@ -187,45 +201,39 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
-  // 🌟 フィルタリング（0件エラーを防ぎ、TV局は正しく件数を変動させる！）
+  // 🌟 フィルタリング（各条件で件数がしっかり変わる正当ロジック！）
   const filteredAnime = animeList.filter((anime) => {
+    // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
 
-    // 配信/局の判定ロジック
+    // 2. 配信/局フィルター
     if (selectedPlatform !== 'すべて') {
-      const platformKeyMap: Record<string, string[]> = {
-        'DMM TV': ['dmm'],
-        'Amazon Prime': ['amazon', 'prime', 'アマプラ'],
-        'dアニメストア': ['dアニメ', 'docomo'],
-        'U-NEXT': ['unext', 'u-next'],
-        'Netflix': ['netflix'],
-        'TOKYO MX': ['tokyo mx', 'mx'],
-        'テレビ東京': ['テレビ東京', 'テレ東'],
-        'フジテレビ': ['フジテレビ', 'フジ'],
-        'BS11': ['bs11']
-      };
-
-      const keys = platformKeyMap[selectedPlatform] || [selectedPlatform.toLowerCase()];
-      const isVod = ['DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT', 'Netflix'].includes(selectedPlatform);
-
-      const hasMatch = anime.channels.some((ch) => {
-        const lowerCh = ch.toLowerCase();
-        return keys.some((k) => lowerCh.includes(k));
+      const target = selectedPlatform.toLowerCase();
+      const hasPlatform = anime.channels.some((ch) => {
+        const c = ch.toLowerCase();
+        if (target.includes('dmm') && c.includes('dmm')) return true;
+        if (target.includes('prime') && (c.includes('prime') || c.includes('amazon'))) return true;
+        if (target.includes('dアニメ') && c.includes('dアニメ')) return true;
+        if (target.includes('unext') && (c.includes('unext') || c.includes('u-next'))) return true;
+        if (target.includes('abema') && c.includes('abema')) return true;
+        if (target.includes('mx') && c.includes('mx')) return true;
+        if (target.includes('bs11') && c.includes('bs11')) return true;
+        if (target.includes('テレビ東京') && c.includes('テレビ東京')) return true;
+        return c.includes(target);
       });
 
-      // TV局選択時は番組表データと厳密マッチ（件数が変動する）
-      // VOD選択時は全アニメを対象にして0件エラーを回避！
-      if (!hasMatch && !isVod) {
-        return false;
-      }
+      if (!hasPlatform) return false;
     }
 
+    // 3. お気に入りフィルター
     if (selectedFavType === '作品' && !favorites.includes(anime.id)) return false;
     if (selectedFavType === '声優') {
       if (favCasts.length === 0) return false;
       const normalize = (s: string) => s.replace(/[\s ]+/g, '').toLowerCase();
       if (!anime.casts?.some((c) => favCasts.map(normalize).includes(normalize(c)))) return false;
     }
+
+    // 4. キーワード検索
     const rawQuery = searchQuery.trim().toLowerCase();
     if (!rawQuery) return true;
     const normQuery = toHiragana(rawQuery);
