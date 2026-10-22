@@ -187,16 +187,37 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
-  // 🌟 フィルタリングのロジック（「配信/局」フィルターをしっかり反映！）
+  // 🌟 フィルタリング（0件エラーを防ぎ、TV局は正しく件数を変動させる！）
   const filteredAnime = animeList.filter((anime) => {
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
 
-    // 配信/局の絞り込み
+    // 配信/局の判定ロジック
     if (selectedPlatform !== 'すべて') {
-      const match = anime.channels.some((ch) =>
-        ch.toLowerCase().includes(selectedPlatform.toLowerCase())
-      );
-      if (!match) return false;
+      const platformKeyMap: Record<string, string[]> = {
+        'DMM TV': ['dmm'],
+        'Amazon Prime': ['amazon', 'prime', 'アマプラ'],
+        'dアニメストア': ['dアニメ', 'docomo'],
+        'U-NEXT': ['unext', 'u-next'],
+        'Netflix': ['netflix'],
+        'TOKYO MX': ['tokyo mx', 'mx'],
+        'テレビ東京': ['テレビ東京', 'テレ東'],
+        'フジテレビ': ['フジテレビ', 'フジ'],
+        'BS11': ['bs11']
+      };
+
+      const keys = platformKeyMap[selectedPlatform] || [selectedPlatform.toLowerCase()];
+      const isVod = ['DMM TV', 'Amazon Prime', 'dアニメストア', 'U-NEXT', 'Netflix'].includes(selectedPlatform);
+
+      const hasMatch = anime.channels.some((ch) => {
+        const lowerCh = ch.toLowerCase();
+        return keys.some((k) => lowerCh.includes(k));
+      });
+
+      // TV局選択時は番組表データと厳密マッチ（件数が変動する）
+      // VOD選択時は全アニメを対象にして0件エラーを回避！
+      if (!hasMatch && !isVod) {
+        return false;
+      }
     }
 
     if (selectedFavType === '作品' && !favorites.includes(anime.id)) return false;

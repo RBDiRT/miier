@@ -29,6 +29,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 }) => {
   const a8Id = process.env.NEXT_PUBLIC_A8_ID || '';
 
+  // 🌟 「主要配信サイト」などの大雑把な表記を排除し、具体名を詳細表示！
+  const defaultPlatforms = ['TOKYO MX', 'BS11', 'ABEMA', 'DMM TV', 'dアニメストア', 'U-NEXT'];
+  const displayChannels = anime.channels && anime.channels.length > 0 ? anime.channels : defaultPlatforms;
+
   const streamingServices = [
     {
       name: 'ABEMA',
@@ -117,28 +121,27 @@ export const DetailModal: React.FC<DetailModalProps> = ({
         </div>
 
         <div className="p-5 space-y-4">
-          {/* 🌟 シンプルに1つに集約した放送・配信ステータス */}
+          {/* 🌟 放送局・取扱配信サービス（具体名をズラッと詳細掲載！） */}
           <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
                 <Film className="w-4 h-4 text-amber-600" />
-                <span>放送・配信ステータス</span>
+                <span>放送局・取扱配信サービス一覧</span>
               </span>
               <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500 text-white">
-                毎週{anime.dayOfWeek}曜日 放送・更新中
+                毎週{anime.dayOfWeek}曜日 更新
               </span>
             </div>
 
-            <div className="text-xs text-slate-700 leading-relaxed space-y-1.5 pt-0.5">
-              <p>
-                今期最新エピソードを順次放送・配信中！放送局や各配信サイトにてお楽しみいただけます。
+            <div className="text-xs text-slate-700 leading-relaxed space-y-2 pt-0.5">
+              <p className="text-[11px] text-slate-600">
+                以下のTV局および動画配信サービスにて最新エピソードが順次放送・配信されています。
               </p>
 
-              {/* 取扱チャンネルタグ */}
-              <div className="flex items-center gap-1 flex-wrap pt-1">
-                <span className="text-[10px] font-bold text-slate-500">放送局/チャンネル:</span>
-                {(anime.channels.length > 0 ? anime.channels : ['TOKYO MX', 'BS11', '主要配信サイト']).map((ch, idx) => (
-                  <span key={idx} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-amber-200 text-amber-800 shadow-2xs">
+              {/* 🌟 具体的な局・サービス名を個別にタグ表示！ */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                {displayChannels.map((ch, idx) => (
+                  <span key={idx} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-amber-200 text-amber-900 shadow-2xs">
                     {ch}
                   </span>
                 ))}
