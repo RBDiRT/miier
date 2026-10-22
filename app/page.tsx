@@ -70,8 +70,14 @@ export default function Home() {
 
   const openModal = async (anime: AnimeWork) => {
     setSelectedAnime(anime);
-    setActiveModalPlatform(anime.channels[0] || 'DMM TV');
+    // 🌟 固定のDMM TVを撤廃！選択中のフィルター局を優先、が無ければ作品の最速1番目のチャンネルを自動セット
+    const initialPlatform =
+      selectedPlatform !== 'すべて' && anime.channels.includes(selectedPlatform)
+        ? selectedPlatform
+        : anime.channels[0] || 'TOKYO MX';
+    setActiveModalPlatform(initialPlatform);
     setCasts([]); setStudioName(''); setLoadingCasts(true);
+    // ...以降のコードはそのまま
     const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
     if (token) {
       try {
