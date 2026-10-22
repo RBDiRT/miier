@@ -70,10 +70,26 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
         </button>
       </div>
 
-      <div className="p-3 space-y-1.5 flex-1 flex flex-col justify-between">
+      <div className="p-3 space-y-2 flex-1 flex flex-col justify-between">
         <h2 className="text-xs font-bold text-slate-800 leading-snug line-clamp-2 group-hover:text-amber-600 transition-colors">
           {anime.title}
         </h2>
+
+        {/* 🌟 復活！取扱チャンネル・局タグの表示 */}
+        {anime.channels && anime.channels.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {anime.channels.slice(0, 2).map((ch, idx) => (
+              <span key={idx} className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 truncate max-w-[90px]">
+                {ch}
+              </span>
+            ))}
+            {anime.channels.length > 2 && (
+              <span className="text-[9px] font-bold text-slate-400 self-center">
+                +{anime.channels.length - 2}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between text-[10px] text-amber-600 font-bold pt-1 border-t border-slate-100">
           <span className="flex items-center gap-0.5">

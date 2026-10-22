@@ -70,14 +70,8 @@ export default function Home() {
 
   const openModal = async (anime: AnimeWork) => {
     setSelectedAnime(anime);
-    // 🌟 固定のDMM TVを撤廃！選択中のフィルター局を優先、が無ければ作品の最速1番目のチャンネルを自動セット
-    const initialPlatform =
-      selectedPlatform !== 'すべて' && anime.channels.includes(selectedPlatform)
-        ? selectedPlatform
-        : anime.channels[0] || 'TOKYO MX';
-    setActiveModalPlatform(initialPlatform);
+    setActiveModalPlatform(anime.channels[0] || 'TOKYO MX');
     setCasts([]); setStudioName(''); setLoadingCasts(true);
-    // ...以降のコードはそのまま
     const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
     if (token) {
       try {
@@ -193,8 +187,18 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
+  // 🌟 フィルタリングのロジック（「配信/局」フィルターをしっかり反映！）
   const filteredAnime = animeList.filter((anime) => {
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
+
+    // 配信/局の絞り込み
+    if (selectedPlatform !== 'すべて') {
+      const match = anime.channels.some((ch) =>
+        ch.toLowerCase().includes(selectedPlatform.toLowerCase())
+      );
+      if (!match) return false;
+    }
+
     if (selectedFavType === '作品' && !favorites.includes(anime.id)) return false;
     if (selectedFavType === '声優') {
       if (favCasts.length === 0) return false;

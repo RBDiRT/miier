@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Film, Info, Users, Sparkles, Music, Tv, ExternalLink, Building, X, Loader2, Star, PlayCircle } from 'lucide-react';
+import { Film, Users, Sparkles, Music, Tv, ExternalLink, Building, X, Loader2, Star, PlayCircle } from 'lucide-react';
 import { AnimeWork, CastInfo } from '../types/anime';
 
 interface DetailModalProps {
@@ -19,8 +19,6 @@ interface DetailModalProps {
 
 export const DetailModal: React.FC<DetailModalProps> = ({
   anime,
-  activePlatform,
-  setActivePlatform,
   casts,
   loadingCasts,
   studioName,
@@ -30,22 +28,6 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   onClose,
 }) => {
   const a8Id = process.env.NEXT_PUBLIC_A8_ID || '';
-
-  // 🌟 表示する放送局・配信チャンネルの生成（データが無ければ主要TV局を自動補完）
-  const displayChannels = anime.channels.length > 0
-    ? anime.channels
-    : ['TOKYO MX', 'BS11', 'テレビ東京', '主要配信サービス'];
-
-  // 現在選択中のプラットフォーム（未選択時は1番目のテレビ局）
-  const currentPlatform = activePlatform || displayChannels[0];
-
-  // テレビ局かどうかを判定するロジック
-  const isTvStation = (name: string) => {
-    return ['TOKYO MX', 'テレビ東京', 'フジテレビ', 'BS11', 'AT-X', 'サンテレビ', 'KBS京都', 'MBS', 'NHK', 'テレビ朝日', 'TBS']
-      .some((tv) => name.includes(tv)) || name.includes('テレビ') || name.includes('放送');
-  };
-
-  const isTv = isTvStation(currentPlatform);
 
   const streamingServices = [
     {
@@ -135,60 +117,36 @@ export const DetailModal: React.FC<DetailModalProps> = ({
         </div>
 
         <div className="p-5 space-y-4">
-          {/* 🌟 1. 放送局・配信チャンネルの一覧 */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold text-slate-600 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Film className="w-3.5 h-3.5 text-amber-500" /> 放送局・配信チャンネル（タップで切替）
-              </span>
-              <span className="text-[10px] text-slate-400 font-normal">全 {displayChannels.length} 局/局</span>
-            </h3>
-
-            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-0.5">
-              {displayChannels.map((ch) => {
-                const isSelected = currentPlatform === ch;
-                return (
-                  <button
-                    key={ch}
-                    onClick={() => setActivePlatform(ch)}
-                    className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all ${
-                      isSelected
-                        ? 'bg-amber-500 text-white shadow-sm scale-105'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
-                    }`}
-                  >
-                    {ch}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 🌟 2. テレビ局/配信サイトに応じた動的メッセージ */}
-          <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3.5 space-y-1.5 transition-all">
+          {/* 🌟 シンプルに1つに集約した放送・配信ステータス */}
+          <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
-                <Info className="w-4 h-4 text-amber-600" />
-                <span>【{currentPlatform}】現在の{isTv ? '放送' : '配信'}状況</span>
+                <Film className="w-4 h-4 text-amber-600" />
+                <span>放送・配信ステータス</span>
               </span>
-              <span className="text-[11px] font-black px-2 py-0.5 rounded-lg bg-amber-500 text-white">
-                {anime.episodes_count > 0 ? `全 ${anime.episodes_count} 話` : '最新エピソード放送・配信中'}
+              <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500 text-white">
+                毎週{anime.dayOfWeek}曜日 放送・更新中
               </span>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              {isTv ? (
-                <>
-                  <strong>{currentPlatform}</strong> にて毎週 <strong>{anime.dayOfWeek}曜日</strong> に絶賛放送中！放送時間に合わせて最新エピソードがお楽しみいただけます。
-                </>
-              ) : (
-                <>
-                  <strong>{currentPlatform}</strong> にて毎週 <strong>{anime.dayOfWeek}曜日</strong> に最新エピソードを順次配信中！
-                </>
-              )}
-            </p>
+
+            <div className="text-xs text-slate-700 leading-relaxed space-y-1.5 pt-0.5">
+              <p>
+                今期最新エピソードを順次放送・配信中！放送局や各配信サイトにてお楽しみいただけます。
+              </p>
+
+              {/* 取扱チャンネルタグ */}
+              <div className="flex items-center gap-1 flex-wrap pt-1">
+                <span className="text-[10px] font-bold text-slate-500">放送局/チャンネル:</span>
+                {(anime.channels.length > 0 ? anime.channels : ['TOKYO MX', 'BS11', '主要配信サイト']).map((ch, idx) => (
+                  <span key={idx} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-amber-200 text-amber-800 shadow-2xs">
+                    {ch}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* 🌟 3. 配信先を探す・今すぐ視聴する */}
+          {/* 🌟 配信先を探す・今すぐ視聴する */}
           <div className="space-y-2 pt-1 border-t border-slate-100">
             <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
               <PlayCircle className="w-4 h-4 text-purple-600" />
@@ -219,7 +177,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             </div>
           </div>
 
-          {/* 🌟 4. キャスト・声優一覧 */}
+          {/* 🌟 キャスト・声優一覧 */}
           <div className="space-y-3 pt-2 border-t border-slate-100">
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-600">
