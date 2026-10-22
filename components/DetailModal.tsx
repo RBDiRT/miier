@@ -29,6 +29,20 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   onToggleAllCasts,
   onClose,
 }) => {
+  // 🌟 アフィリエイトIDを環境変数から取得（未設定の場合は検索ページへ安全にフォールバック）
+  const a8Id = process.env.NEXT_PUBLIC_A8_ID || '';
+  const rakutenId = process.env.NEXT_PUBLIC_RAKUTEN_ID || '';
+
+  // 配信検索URL（A8.net等のIDがあればアフィリエイトリンク、無ければGoogle検索）
+  const streamSearchUrl = a8Id
+    ? `https://px.a8.net/svt/ejp?a8mat=${a8Id}&extra=${encodeURIComponent(anime.title)}`
+    : `https://www.google.com/search?q=${encodeURIComponent(anime.title + ' 配信 アニメ')}`;
+
+  // 原作・グッズ検索URL（楽天アフィリエイトIDがあれば経由リンク、無ければ楽天通常検索）
+  const goodsSearchUrl = rakutenId
+    ? `https://hb.afl.rakuten.co.jp/hgc/${rakutenId}/?pc=${encodeURIComponent(`https://search.rakuten.co.jp/search/mall/${encodeURIComponent(anime.title)}/`)}`
+    : `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(anime.title)}/`;
+
   return (
     <div
       className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
@@ -197,9 +211,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               </a>
             )}
 
+            {/* 🌟 収益化アフィリエイトボタン群 */}
             <div className="grid grid-cols-2 gap-2">
               <a
-                href={`https://px.a8.net/svt/ejp?a8mat=YOUR_A8_ID&extra=${encodeURIComponent(anime.title)}`}
+                href={streamSearchUrl}
                 target="_blank"
                 rel="nofollow noopener"
                 className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2.5 px-3 rounded-xl shadow-sm transition-all"
@@ -209,7 +224,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               </a>
 
               <a
-                href={`https://hb.afl.rakuten.co.jp/hgc/YOUR_RAKUTEN_ID?pc=${encodeURIComponent(`https://search.rakuten.co.jp/search/mall/${encodeURIComponent(anime.title)}/`)}`}
+                href={goodsSearchUrl}
                 target="_blank"
                 rel="nofollow noopener"
                 className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2.5 px-3 rounded-xl border border-slate-200 transition-all"
