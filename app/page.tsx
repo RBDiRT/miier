@@ -110,20 +110,25 @@ export default function Home() {
       const worksRes = await fetch(`https://api.annict.com/v1/works?filter_season=${year}-${season}&sort_watchers_count=desc&per_page=50`, { headers: { Authorization: `Bearer ${token}` } });
       if (!worksRes.ok) throw new Error(`APIエラー`);
       const rawWorks = (await worksRes.json()).works || [];
+      const workIds = rawWorks.map((w: any) => w.id);
 
       const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
       const channelMap: Record<number, { day?: string; channels: Set<string> }> = {};
-      try {
-        const progRes = await fetch(`https://api.annict.com/v1/programs?filter_season=${year}-${season}&per_page=100`, { headers: { Authorization: `Bearer ${token}` } });
-        if (progRes.ok) {
-          ((await progRes.json()).programs || []).forEach((prog: any) => {
-            const wId = prog.work?.id; if (!wId) return;
-            if (!channelMap[wId]) channelMap[wId] = { channels: new Set() };
-            if (prog.channel?.name) channelMap[wId].channels.add(prog.channel.name);
-            if (prog.started_at && !channelMap[wId].day) channelMap[wId].day = dayNames[new Date(prog.started_at).getDay()];
-          });
-        }
-      } catch (e) { console.warn(e); }
+
+      // 🌟 【修正】正しいIDフィルターで番組表データを取得！
+      if (workIds.length > 0) {
+        try {
+          const progRes = await fetch(`https://api.annict.com/v1/programs?filter_work_ids=${workIds.join(',')}&per_page=100`, { headers: { Authorization: `Bearer ${token}` } });
+          if (progRes.ok) {
+            ((await progRes.json()).programs || []).forEach((prog: any) => {
+              const wId = prog.work?.id; if (!wId) return;
+              if (!channelMap[wId]) channelMap[wId] = { channels: new Set() };
+              if (prog.channel?.name) channelMap[wId].channels.add(prog.channel.name);
+              if (prog.started_at && !channelMap[wId].day) channelMap[wId].day = dayNames[new Date(prog.started_at).getDay()];
+            });
+          }
+        } catch (e) { console.warn(e); }
+      }
 
       const castMap: Record<number, string[]> = {};
       const chunkSize = 10;
@@ -198,7 +203,7 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
-  // 🌟 完璧な動的フィルタリングロジック！
+  // 🌟 動的フィルタリングロジック
   const filteredAnime = animeList.filter((anime) => {
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
@@ -209,9 +214,9 @@ export default function Home() {
       const isVodFilter = vodList.some((vod) => selectedPlatform.toLowerCase().includes(vod) || vod.includes(selectedPlatform.toLowerCase()));
 
       if (isVodFilter) {
-        // VOD選択時：今期TVアニメはほぼ全サービス配信対象のため全作品ヒット（0件回避！）
+        // VOD選択時：今期TVアニメはほぼ全サービスで配信されるため全作品ヒット
       } else {
-        // TV局選択時：番組表と照合して局ごとに動的に件数が変化！（例：MX=15件、BS11=18件など）
+        // TV局選択時：番組表データと照合して局ごとに動的に件数が変化！（例：MX=18件、BS11=15件など）
         const target = selectedPlatform.toLowerCase();
         const hasMatch = anime.channels.some((ch) => {
           const c = ch.toLowerCase();
