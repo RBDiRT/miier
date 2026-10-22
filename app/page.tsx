@@ -138,10 +138,7 @@ export default function Home() {
       }
 
       setAnimeList(rawWorks.map((w: any, idx: number) => {
-        const tvChannels = Array.from(channelMap[w.id]?.channels || []);
-        // TVアニメには主要配信サービスも配信枠としてセット
-        const vodServices = ['DMM TV', 'dアニメストア', 'U-NEXT', 'Amazon Prime', 'ABEMA'];
-        const combinedChannels = Array.from(new Set([...tvChannels, ...vodServices]));
+        const actualChannels = Array.from(channelMap[w.id]?.channels || []);
 
         return {
           id: w.id,
@@ -153,7 +150,7 @@ export default function Home() {
           twitter_username: w.twitter_username || '',
           season_name_text: w.season_name_text || '',
           dayOfWeek: channelMap[w.id]?.day || ['月', '火', '水', '木', '金', '土', '日'][(w.id || idx) % 7],
-          channels: combinedChannels,
+          channels: actualChannels, // 🌟 余計な一括追加を完全削除！Annictの番組表に存在する正しい局・チャンネルのみをセット！
           image_url: w.images?.facebook_ogp_url || w.images?.recommended_url || '',
           casts: castMap[w.id] || [],
         };
@@ -201,7 +198,7 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
-  // 🌟 フィルタリング（各条件で件数がしっかり変わる正当ロジック！）
+  // 🌟 正確な絞り込み判定ロジック！
   const filteredAnime = animeList.filter((anime) => {
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
@@ -209,7 +206,8 @@ export default function Home() {
     // 2. 配信/局フィルター
     if (selectedPlatform !== 'すべて') {
       const target = selectedPlatform.toLowerCase();
-      const hasPlatform = anime.channels.some((ch) => {
+      
+      const hasMatch = anime.channels.some((ch) => {
         const c = ch.toLowerCase();
         if (target.includes('dmm') && c.includes('dmm')) return true;
         if (target.includes('prime') && (c.includes('prime') || c.includes('amazon'))) return true;
@@ -218,11 +216,11 @@ export default function Home() {
         if (target.includes('abema') && c.includes('abema')) return true;
         if (target.includes('mx') && c.includes('mx')) return true;
         if (target.includes('bs11') && c.includes('bs11')) return true;
-        if (target.includes('テレビ東京') && c.includes('テレビ東京')) return true;
+        if (target.includes('テレビ東京') && (c.includes('テレビ東京') || c.includes('テレ東'))) return true;
         return c.includes(target);
       });
 
-      if (!hasPlatform) return false;
+      if (!hasMatch) return false;
     }
 
     // 3. お気に入りフィルター
