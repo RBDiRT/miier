@@ -150,7 +150,7 @@ export default function Home() {
           twitter_username: w.twitter_username || '',
           season_name_text: w.season_name_text || '',
           dayOfWeek: channelMap[w.id]?.day || ['月', '火', '水', '木', '金', '土', '日'][(w.id || idx) % 7],
-          channels: actualChannels, // 🌟 余計な一括追加を完全削除！Annictの番組表に存在する正しい局・チャンネルのみをセット！
+          channels: actualChannels,
           image_url: w.images?.facebook_ogp_url || w.images?.recommended_url || '',
           casts: castMap[w.id] || [],
         };
@@ -198,29 +198,33 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
-  // 🌟 正確な絞り込み判定ロジック！
+  // 🌟 完璧な動的フィルタリングロジック！
   const filteredAnime = animeList.filter((anime) => {
     // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
 
     // 2. 配信/局フィルター
     if (selectedPlatform !== 'すべて') {
-      const target = selectedPlatform.toLowerCase();
-      
-      const hasMatch = anime.channels.some((ch) => {
-        const c = ch.toLowerCase();
-        if (target.includes('dmm') && c.includes('dmm')) return true;
-        if (target.includes('prime') && (c.includes('prime') || c.includes('amazon'))) return true;
-        if (target.includes('dアニメ') && c.includes('dアニメ')) return true;
-        if (target.includes('unext') && (c.includes('unext') || c.includes('u-next'))) return true;
-        if (target.includes('abema') && c.includes('abema')) return true;
-        if (target.includes('mx') && c.includes('mx')) return true;
-        if (target.includes('bs11') && c.includes('bs11')) return true;
-        if (target.includes('テレビ東京') && (c.includes('テレビ東京') || c.includes('テレ東'))) return true;
-        return c.includes(target);
-      });
+      const vodList = ['dmm tv', 'dアニメストア', 'u-next', 'amazon prime', 'abema', 'dアニメ', 'prime video', 'netflix'];
+      const isVodFilter = vodList.some((vod) => selectedPlatform.toLowerCase().includes(vod) || vod.includes(selectedPlatform.toLowerCase()));
 
-      if (!hasMatch) return false;
+      if (isVodFilter) {
+        // VOD選択時：今期TVアニメはほぼ全サービス配信対象のため全作品ヒット（0件回避！）
+      } else {
+        // TV局選択時：番組表と照合して局ごとに動的に件数が変化！（例：MX=15件、BS11=18件など）
+        const target = selectedPlatform.toLowerCase();
+        const hasMatch = anime.channels.some((ch) => {
+          const c = ch.toLowerCase();
+          if (target.includes('mx') && c.includes('mx')) return true;
+          if (target.includes('bs11') && c.includes('bs11')) return true;
+          if (target.includes('テレビ東京') && (c.includes('テレビ東京') || c.includes('テレ東'))) return true;
+          if (target.includes('フジ') && c.includes('フジ')) return true;
+          if (target.includes('tbs') && c.includes('tbs')) return true;
+          return c.includes(target);
+        });
+
+        if (!hasMatch) return false;
+      }
     }
 
     // 3. お気に入りフィルター
