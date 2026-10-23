@@ -27,7 +27,6 @@ const normalizePlatform = (name: string) => {
   return s;
 };
 
-// クール一覧データ定義
 const SEASONS = [
   { label: '2027年 冬アニメ', year: 2027, season: 'winter' },
   { label: '2026年 秋アニメ', year: 2026, season: 'autumn' },
@@ -37,7 +36,7 @@ const SEASONS = [
 ];
 
 export default function Home() {
-  const [selectedSeason, setSelectedSeason] = useState(SEASONS[1]); // 初期値: 2026年秋
+  const [selectedSeason, setSelectedSeason] = useState(SEASONS[1]);
   const [selectedDay, setSelectedDay] = useState('すべて');
   const [selectedPlatform, setSelectedPlatform] = useState('すべて');
   const [selectedFavType, setSelectedFavType] = useState('すべて');
@@ -81,8 +80,11 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_favorites', JSON.stringify(updated));
   };
 
+  // 🌟 【神修正】...castName のドット3つを除去して文字列のまま追加！
   const toggleFavCast = (castName: string) => {
-    const updated = favCasts.includes(castName) ? favCasts.filter((c) => c !== castName) : [...favCasts, ...castName];
+    const updated = favCasts.includes(castName)
+      ? favCasts.filter((c) => c !== castName)
+      : [...favCasts, castName];
     setFavCasts(updated);
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
@@ -203,7 +205,6 @@ export default function Home() {
     } catch (err) { setErrorMsg('データ取得エラー'); } finally { setLoading(false); }
   };
 
-  // クールが変更されたら再取得
   useEffect(() => { fetchAnnictAnime(); }, [selectedSeason]);
 
   const searchPastWorks = async () => {
@@ -280,7 +281,6 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* 🌟 クール選択ドロップダウン */}
             <div className="relative flex items-center bg-amber-50 rounded-xl border border-amber-200 px-2.5 py-1 text-amber-900 font-bold text-xs">
               <Calendar className="w-3.5 h-3.5 mr-1.5 text-amber-600" />
               <select
@@ -299,7 +299,6 @@ export default function Home() {
               </select>
             </div>
 
-            {/* 🌟 推し・お気に入り管理ボタン */}
             <button
               onClick={() => setIsFavModalOpen(true)}
               className="flex items-center gap-1 text-xs font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-xl transition-all shadow-2xs active:scale-95"
