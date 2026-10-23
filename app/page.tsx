@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RefreshCw, Loader2, Heart, Calendar } from 'lucide-react';
 import { AnimeWork, CastInfo } from '../types/anime';
 import { ControlPanel } from '../components/ControlPanel';
 import { AnimeCard } from '../components/AnimeCard';
 import { DetailModal } from '../components/DetailModal';
 import { PastWorkModal } from '../components/PastWorkModal';
+import { FavoritesModal } from '../components/FavoritesModal';
 
 const toHiragana = (str: string) => str.replace(/[\u30a1-\u30f6]/g, (m) => String.fromCharCode(m.charCodeAt(0) - 0x60));
 
-// 🌟 プラットフォーム名の表記揺れを100%統一する正規化関数
 const normalizePlatform = (name: string) => {
   const s = name.toLowerCase().replace(/[\s_ ]+/g, '');
   if (s.includes('mx') || s.includes('tokyo')) return 'tokyomx';
@@ -27,7 +27,17 @@ const normalizePlatform = (name: string) => {
   return s;
 };
 
+// クール一覧データ定義
+const SEASONS = [
+  { label: '2027年 冬アニメ', year: 2027, season: 'winter' },
+  { label: '2026年 秋アニメ', year: 2026, season: 'autumn' },
+  { label: '2026年 夏アニメ', year: 2026, season: 'summer' },
+  { label: '2026年 春アニメ', year: 2026, season: 'spring' },
+  { label: '2026年 冬アニメ', year: 2026, season: 'winter' },
+];
+
 export default function Home() {
+  const [selectedSeason, setSelectedSeason] = useState(SEASONS[1]); // 初期値: 2026年秋
   const [selectedDay, setSelectedDay] = useState('すべて');
   const [selectedPlatform, setSelectedPlatform] = useState('すべて');
   const [selectedFavType, setSelectedFavType] = useState('すべて');
@@ -38,7 +48,6 @@ export default function Home() {
   const [favCasts, setFavCasts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [seasonName, setSeasonName] = useState('今期');
 
   const [selectedAnime, setSelectedAnime] = useState<AnimeWork | null>(null);
   const [activeModalPlatform, setActiveModalPlatform] = useState<string>('');
@@ -47,6 +56,8 @@ export default function Home() {
   const [studioName, setStudioName] = useState<string>('');
 
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isFavModalOpen, setIsFavModalOpen] = useState(false);
+
   const [workSearchQuery, setWorkSearchQuery] = useState('');
   const [workSearchResults, setWorkSearchResults] = useState<AnimeWork[]>([]);
   const [searchingWorks, setSearchingWorks] = useState(false);
@@ -71,9 +82,14 @@ export default function Home() {
   };
 
   const toggleFavCast = (castName: string) => {
-    const updated = favCasts.includes(castName) ? favCasts.filter((c) => c !== castName) : [...favCasts, castName];
+    const updated = favCasts.includes(castName) ? favCasts.filter((c) => c !== castName) : [...favCasts, ...castName];
     setFavCasts(updated);
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
+  };
+
+  const clearAllFavCasts = () => {
+    setFavCasts([]);
+    if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify([]));
   };
 
   const toggleAllCastsForAnime = () => {
@@ -113,18 +129,12 @@ export default function Home() {
 
   const fetchAnnictAnime = async () => {
     setLoading(true); setErrorMsg('');
-    const now = new Date(); const year = now.getFullYear(); const month = now.getMonth() + 1;
-    let season = 'winter', seasonJp = '冬';
-    if (month >= 4 && month <= 6) { season = 'spring'; seasonJp = '春'; }
-    else if (month >= 7 && month <= 9) { season = 'summer'; seasonJp = '夏'; }
-    else if (month >= 10 && month <= 12) { season = 'autumn'; seasonJp = '秋'; }
-    setSeasonName(`${year}年 ${seasonJp}アニメ`);
-
     const token = process.env.NEXT_PUBLIC_ANNICT_TOKEN;
     if (!token) { setErrorMsg('アクセストークン未設定'); setLoading(false); return; }
 
     try {
-      const worksRes = await fetch(`https://api.annict.com/v1/works?filter_season=${year}-${season}&sort_watchers_count=desc&per_page=50`, { headers: { Authorization: `Bearer ${token}` } });
+      const seasonQuery = `${selectedSeason.year}-${selectedSeason.season}`;
+      const worksRes = await fetch(`https://api.annict.com/v1/works?filter_season=${seasonQuery}&sort_watchers_count=desc&per_page=50`, { headers: { Authorization: `Bearer ${token}` } });
       if (!worksRes.ok) throw new Error(`APIエラー`);
       const rawWorks = (await worksRes.json()).works || [];
 
@@ -162,7 +172,6 @@ export default function Home() {
         const apiChannels = Array.from(channelMap[w.id]?.channels || []);
         const generatedChannels = new Set<string>(apiChannels);
 
-        // 🌟 インデックス（idx: 0〜49）で各局・各配信サイトに綺麗に分散！
         if (idx % 2 === 0 || idx % 5 === 1) generatedChannels.add('TOKYO MX');
         if (idx % 3 !== 0) generatedChannels.add('BS11');
         if (idx % 3 === 0) generatedChannels.add('テレビ東京');
@@ -194,7 +203,8 @@ export default function Home() {
     } catch (err) { setErrorMsg('データ取得エラー'); } finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchAnnictAnime(); }, []);
+  // クールが変更されたら再取得
+  useEffect(() => { fetchAnnictAnime(); }, [selectedSeason]);
 
   const searchPastWorks = async () => {
     if (!workSearchQuery.trim()) return;
@@ -234,19 +244,15 @@ export default function Home() {
     if (typeof window !== 'undefined') localStorage.setItem('miier_fav_casts', JSON.stringify(updated));
   };
 
-  // 🌟 100%確実にマッチする正規化判定フィルター！
   const filteredAnime = animeList.filter((anime) => {
-    // 1. 曜日フィルター
     if (selectedDay !== 'すべて' && anime.dayOfWeek !== selectedDay) return false;
 
-    // 2. 配信/局フィルター（正規化キーで照合！）
     if (selectedPlatform !== 'すべて') {
       const targetKey = normalizePlatform(selectedPlatform);
       const hasMatch = anime.channels.some((ch) => normalizePlatform(ch) === targetKey);
       if (!hasMatch) return false;
     }
 
-    // 3. お気に入りフィルター
     if (selectedFavType === '作品' && !favorites.includes(anime.id)) return false;
     if (selectedFavType === '声優') {
       if (favCasts.length === 0) return false;
@@ -254,7 +260,6 @@ export default function Home() {
       if (!anime.casts?.some((c) => favCasts.map(normalize).includes(normalize(c)))) return false;
     }
 
-    // 4. キーワード検索
     const rawQuery = searchQuery.trim().toLowerCase();
     if (!rawQuery) return true;
     const normQuery = toHiragana(rawQuery);
@@ -266,16 +271,54 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
       <header className="border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-50 px-4 py-3 shadow-sm">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🦡</span>
-            <span className="text-xl font-extrabold tracking-tight text-slate-900">Miier <span className="text-xs font-normal text-slate-500">（ミーア）</span></span>
+            <span className="text-xl font-extrabold tracking-tight text-slate-900">
+              Miier <span className="text-xs font-normal text-slate-500">（ミーア）</span>
+            </span>
           </div>
+
           <div className="flex items-center gap-2">
-            <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">{seasonName} 自動更新中</span>
-            <button onClick={fetchAnnictAnime} className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-amber-600 bg-slate-100 hover:bg-amber-50 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors">
+            {/* 🌟 クール選択ドロップダウン */}
+            <div className="relative flex items-center bg-amber-50 rounded-xl border border-amber-200 px-2.5 py-1 text-amber-900 font-bold text-xs">
+              <Calendar className="w-3.5 h-3.5 mr-1.5 text-amber-600" />
+              <select
+                value={selectedSeason.label}
+                onChange={(e) => {
+                  const s = SEASONS.find((item) => item.label === e.target.value);
+                  if (s) setSelectedSeason(s);
+                }}
+                className="bg-transparent font-extrabold cursor-pointer focus:outline-none text-xs"
+              >
+                {SEASONS.map((s) => (
+                  <option key={s.label} value={s.label}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 🌟 推し・お気に入り管理ボタン */}
+            <button
+              onClick={() => setIsFavModalOpen(true)}
+              className="flex items-center gap-1 text-xs font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-xl transition-all shadow-2xs active:scale-95"
+            >
+              <Heart className="w-3.5 h-3.5 fill-purple-600 text-purple-600" />
+              <span>推し管理</span>
+              {(favorites.length > 0 || favCasts.length > 0) && (
+                <span className="ml-0.5 text-[10px] bg-purple-600 text-white px-1.5 py-0.2 rounded-full font-black">
+                  {favorites.length + favCasts.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={fetchAnnictAnime}
+              className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-amber-600 bg-slate-100 hover:bg-amber-50 px-2.5 py-1.5 rounded-xl border border-slate-200 transition-colors"
+              title="再読み込み"
+            >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">再読み込み</span>
             </button>
           </div>
         </div>
@@ -296,7 +339,7 @@ export default function Home() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-            <p className="text-xs">今期アニメ＆番組表＆キャストデータを読み込み中...</p>
+            <p className="text-xs">{selectedSeason.label} のアニメデータを読み込み中...</p>
           </div>
         ) : (
           <div>
@@ -329,6 +372,14 @@ export default function Home() {
           isSearching={searchingWorks} searchResults={workSearchResults} selectedWork={selectedSearchWork}
           setSelectedWork={setSelectedSearchWork} onSelectWork={selectSearchWork} workCasts={searchWorkCasts}
           loadingCasts={loadingSearchCasts} favCasts={favCasts} onToggleFavCast={toggleFavCast} onRegisterAllCasts={registerAllPastWorkCasts}
+        />
+
+        <FavoritesModal
+          isOpen={isFavModalOpen} onClose={() => setIsFavModalOpen(false)}
+          favorites={favorites} animeList={animeList} favCasts={favCasts}
+          onRemoveFavorite={(id) => toggleFavorite(id)}
+          onRemoveFavCast={(cast) => toggleFavCast(cast)}
+          onClearAllFavCasts={clearAllFavCasts}
         />
       </main>
     </div>
